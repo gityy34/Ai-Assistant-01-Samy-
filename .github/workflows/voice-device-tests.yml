@@ -6,7 +6,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: voice-device-tests-${{ github.ref }}
+  group: voice-device-tests-v2-${{ github.ref }}
   cancel-in-progress: true
 jobs:
   emulator:
