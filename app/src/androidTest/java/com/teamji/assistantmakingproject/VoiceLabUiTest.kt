@@ -2,6 +2,8 @@ package com.teamji.assistantmakingproject
 
 import android.Manifest
 import android.graphics.Bitmap
+import android.content.ContentValues
+import android.provider.MediaStore
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.rule.GrantPermissionRule
@@ -70,9 +72,17 @@ class VoiceLabUiTest {
     private fun screenshot(name: String) {
         compose.waitForIdle()
         val instrumentation = InstrumentationRegistry.getInstrumentation()
-        val dir = File(instrumentation.targetContext.getExternalFilesDir(null), "ui-review").apply { mkdirs() }
+        val context = instrumentation.targetContext
+        val values = ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, "$name.png")
+            put(MediaStore.MediaColumns.MIME_TYPE, "image/png")
+            put(MediaStore.MediaColumns.RELATIVE_PATH, "Download/voice-lab-review")
+        }
+        val uri = checkNotNull(context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values))
         val bitmap = instrumentation.uiAutomation.takeScreenshot()
-        File(dir, "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        checkNotNull(context.contentResolver.openOutputStream(uri)).use {
+            check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it))
+        }
         bitmap.recycle()
     }
 }
