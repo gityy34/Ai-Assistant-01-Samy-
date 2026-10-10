@@ -29,18 +29,26 @@ class PiperBaseVoice(private val context: Context) {
                 tts?.release()
                 tts = null
                 loadedLanguage = null
-                val root = File(context.filesDir, "base-models-1/$folder")
+                val root = File(context.filesDir, "base-models-2/$folder")
                 val ready = File(root, ".ready")
                 if (!ready.isFile) {
                     root.deleteRecursively()
                     copyAssets("models/$folder", root)
-                    ready.writeText("1")
+                    // Marker is written only after every required resource is checked.
                 }
                 val model = if (language == ReplyLanguage.URDU)
                     "ur_PK-fasih-medium.onnx" else "en_US-lessac-medium.onnx"
                 check(File(root, model).isFile && File(root, "tokens.txt").isFile) {
                     "Base voice model is missing"
                 }
+                val requiredFiles = listOf(model, "tokens.txt", "espeak-ng-data/phontab",
+                    "espeak-ng-data/phonindex", "espeak-ng-data/phondata", "espeak-ng-data/intonations")
+                requiredFiles.forEach { relative ->
+                    check(File(root, relative).let { it.isFile && it.length() > 0L }) {
+                        "Voice resource missing or empty: $relative"
+                    }
+                }
+                ready.writeText("2")
                 tts = OfflineTts(config = OfflineTtsConfig(
                     model = OfflineTtsModelConfig(
                         vits = OfflineTtsVitsModelConfig(
@@ -49,6 +57,7 @@ class PiperBaseVoice(private val context: Context) {
                             dataDir = File(root, "espeak-ng-data").absolutePath,
                         ),
                         numThreads = 2,
+                        debug = true,
                         provider = "cpu",
                     ),
                     maxNumSentences = 1,

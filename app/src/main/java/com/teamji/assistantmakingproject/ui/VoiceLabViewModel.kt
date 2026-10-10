@@ -16,7 +16,9 @@ import com.teamji.assistantmakingproject.voice.VoiceCloneEngine
 import com.teamji.assistantmakingproject.voice.VoiceReference
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import com.teamji.assistantmakingproject.voice.PiperBaseVoice
+import com.teamji.assistantmakingproject.voice.BaseVoiceClient
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -40,7 +42,8 @@ class VoiceLabViewModel(application: Application) : AndroidViewModel(application
     private val recorder = WavAudioRecorder(application)
     private val imports = ImportedAudioStore(application)
     private val player = PcmPlayer()
-    private val baseVoice = PiperBaseVoice(application)
+    private val baseVoice = BaseVoiceClient(application)
+    private var previewJob: Job? = null
     private var generation = 0
     private val engine: VoiceCloneEngine = UnconfiguredMultilingualVoiceEngine()
     private var activeRecordingFile: File? = null
@@ -111,7 +114,7 @@ class VoiceLabViewModel(application: Application) : AndroidViewModel(application
         val snapshot = _state.value
         if (snapshot.isBusy || snapshot.isRecording || snapshot.text.isBlank()) return
         val requestId = ++generation
-        viewModelScope.launch {
+        previewJob = viewModelScope.launch {
             _state.update { it.copy(isBusy = true, status = "Preparing base voice (not cloned)…") }
             runCatching {
                 val audio = baseVoice.synthesize(snapshot.text, snapshot.language)
@@ -127,6 +130,7 @@ class VoiceLabViewModel(application: Application) : AndroidViewModel(application
                     }
                 }
                 .onFailure { error ->
+                    if (error is CancellationException) throw error
                     Log.e("VoiceLab", "Base voice synthesis/playback failed", error)
                     if (generation == requestId)
                         _state.update {
@@ -178,6 +182,7 @@ class VoiceLabViewModel(application: Application) : AndroidViewModel(application
 
     fun stop() {
         generation++
+        previewJob?.cancel()
         baseVoice.stop()
         if (_state.value.isRecording) {
             stopRecording()

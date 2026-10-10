@@ -7,6 +7,8 @@
         android:label="Assistant Voice Lab"
         android:supportsRtl="true"
         android:theme="@style/Theme.AssistantMakingProject">
+        <service android:name=".voice.BaseVoiceService"
+            android:exported="false" android:process=":base_voice" />
         <activity
             android:name=".MainActivity"
             android:exported="true">

@@ -12,8 +12,8 @@ android {
         applicationId = "com.teamji.assistantmakingproject"
         minSdk = 29
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.1-demo1-shell"
+        versionCode = 2
+        versionName = "0.1.2-base-voice-recovery"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
@@ -29,7 +29,7 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    defaultConfig { ndk { abiFilters += "arm64-v8a" } }
+    defaultConfig { ndk { abiFilters += providers.gradleProperty("testAbi").orElse("arm64-v8a").get() } }
 
     packaging {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
@@ -49,5 +49,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
 
     testImplementation("junit:junit:4.13.2")
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
     debugImplementation("androidx.compose.ui:ui-tooling:1.7.8")
 }

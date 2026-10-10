@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -69,6 +70,7 @@ private fun VoiceLabScreen(vm: VoiceLabViewModel = viewModel()) {
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .safeDrawingPadding()
             .verticalScroll(rememberScrollState())
             .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
@@ -78,6 +80,7 @@ private fun VoiceLabScreen(vm: VoiceLabViewModel = viewModel()) {
 
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Button(
+                enabled = !state.isBusy,
                 onClick = {
                     if (state.isRecording) {
                         vm.stopRecording()
@@ -96,7 +99,7 @@ private fun VoiceLabScreen(vm: VoiceLabViewModel = viewModel()) {
                 Text(if (state.isRecording) "Stop Recording" else "Record Voice")
             }
 
-            Button(onClick = { importAudio.launch(arrayOf("audio/wav", "audio/x-wav")) }) {
+            Button(enabled = !state.isBusy && !state.isRecording, onClick = { importAudio.launch(arrayOf("audio/wav", "audio/x-wav")) }) {
                 Text("Import Voice")
             }
         }
