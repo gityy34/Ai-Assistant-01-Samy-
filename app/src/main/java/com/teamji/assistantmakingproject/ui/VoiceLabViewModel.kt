@@ -2,6 +2,7 @@ package com.teamji.assistantmakingproject.ui
 
 import android.app.Application
 import android.net.Uri
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.teamji.assistantmakingproject.audio.ImportedAudioStore
@@ -112,16 +113,28 @@ class VoiceLabViewModel(application: Application) : AndroidViewModel(application
         val requestId = ++generation
         viewModelScope.launch {
             _state.update { it.copy(isBusy = true, status = "Preparing base voice (not cloned)…") }
-            runCatching { baseVoice.synthesize(snapshot.text, snapshot.language) }
-                .onSuccess { audio ->
+            runCatching {
+                val audio = baseVoice.synthesize(snapshot.text, snapshot.language)
+                if (generation == requestId) {
+                    // Playback errors must use the same error path as synthesis errors.
+                    player.play(audio.pcm16, audio.sampleRateHz)
+                }
+                audio
+            }
+                .onSuccess { _ ->
                     if (generation == requestId) {
-                        player.play(audio.pcm16, audio.sampleRateHz)
                         _state.update { it.copy(isBusy = false, status = "Playing base voice — not cloned") }
                     }
                 }
                 .onFailure { error ->
+                    Log.e("VoiceLab", "Base voice synthesis/playback failed", error)
                     if (generation == requestId)
-                        _state.update { it.copy(isBusy = false, status = error.message ?: "Base voice failed") }
+                        _state.update {
+                            it.copy(
+                                isBusy = false,
+                                status = "Base voice failed: ${error.javaClass.simpleName}: ${error.message ?: "Unknown error"}",
+                            )
+                        }
                 }
         }
     }
