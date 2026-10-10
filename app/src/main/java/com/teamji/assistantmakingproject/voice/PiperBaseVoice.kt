@@ -64,9 +64,9 @@ class PiperBaseVoice(private val context: Context) {
                 ))
                 loadedLanguage = language
             }
-            val audio = checkNotNull(tts).generateWithCallback(text, 0, 1.0f) {
-                if (stopped.get()) 0 else 1
-            }
+            // JNI callback lookup is incompatible with Kotlin's invokedynamic lambdas.
+            // Cancellation is handled by terminating the dedicated service process.
+            val audio = checkNotNull(tts).generate(text, 0, 1.0f)
             check(!stopped.get()) { "Stopped" }
             SynthesisResult(
                 pcm16 = ShortArray(audio.samples.size) { i ->
