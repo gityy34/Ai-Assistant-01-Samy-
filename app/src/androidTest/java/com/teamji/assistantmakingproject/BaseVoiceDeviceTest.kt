@@ -124,6 +124,15 @@ class BaseVoiceDeviceTest {
         } finally { female.delete(); male.delete(); fixture.delete() }
     }
 
+    @Test fun successfulRepliesSurviveImmediateWorkerUnbinding() = runBlocking {
+        val client = BaseVoiceClient(InstrumentationRegistry.getInstrumentation().targetContext)
+        repeat(8) {
+            val audio = client.synthesize("Hello. This file must remain readable.", ReplyLanguage.ENGLISH)
+            assertTrue("Completed audio must be fully readable after unbind", audio.pcm16.size > audio.sampleRateHz / 4)
+            assertTrue(audio.pcm16.any { kotlin.math.abs(it.toInt()) > 100 })
+        }
+    }
+
     private fun writeReference(file: File, samples: FloatArray, rate: Int) {
         val count = minOf(160_000L, samples.size.toLong() * 16_000 / rate).toInt()
         val pcm = ShortArray(count) { i ->

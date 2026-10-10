@@ -24,6 +24,7 @@ class BaseVoiceService : Service() {
                     val data = Bundle(request.data)
                     scope.launch {
                         var output: File? = null
+                        var published = false
                         try {
                             val id = data.getString("id").orEmpty()
                             require(Regex("[a-f0-9-]{36}").matches(id)) { "Invalid request" }
@@ -47,9 +48,19 @@ class BaseVoiceService : Service() {
                                 stream.writeInt(audio.pcm16.size)
                                 audio.pcm16.forEach { stream.writeShort(it.toInt()) }
                             }
-                            withContext(Dispatchers.Main) { busy = false; reply.send(Message.obtain(null, SUCCESS).apply { this.data = Bundle().apply { putInt("workerPid", android.os.Process.myPid()) } }) }
+                            withContext(Dispatchers.Main) {
+                                busy = false
+                                reply.send(Message.obtain(null, SUCCESS).apply {
+                                    this.data = Bundle().apply { putInt("workerPid", android.os.Process.myPid()) }
+                                })
+                                // Once the success reply is sent, only the client owns/deletes this file.
+                                // Unbinding may cancel this coroutine before it resumes on IO.
+                                published = true
+                            }
                         } catch (error: Throwable) {
-                            output?.delete()
+                            if (!published) output?.delete()
+                            if (error is CancellationException) throw error
+                            if (published) return@launch
                             android.util.Log.e("BaseVoiceWorker", "Synthesis failed", error)
                             withContext(Dispatchers.Main) {
                                 busy = false
