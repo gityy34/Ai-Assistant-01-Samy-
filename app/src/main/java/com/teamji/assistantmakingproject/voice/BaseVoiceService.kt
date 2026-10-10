@@ -46,7 +46,7 @@ class BaseVoiceService : Service() {
                                 stream.writeInt(audio.pcm16.size)
                                 audio.pcm16.forEach { stream.writeShort(it.toInt()) }
                             }
-                            withContext(Dispatchers.Main) { busy = false; reply.send(Message.obtain(null, SUCCESS).apply { data = Bundle().apply { putInt("workerPid", android.os.Process.myPid()) } }) }
+                            withContext(Dispatchers.Main) { busy = false; reply.send(Message.obtain(null, SUCCESS).apply { this.data = Bundle().apply { putInt("workerPid", android.os.Process.myPid()) } }) }
                         } catch (error: Throwable) {
                             output?.delete()
                             android.util.Log.e("BaseVoiceWorker", "Synthesis failed", error)
