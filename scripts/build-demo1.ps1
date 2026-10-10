@@ -2,8 +2,8 @@ $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
-$GradleVersion = "9.6.0"
-$GradleSha256 = "bbaeb2fef8710818cf0e261201dab964c572f92b942812df0c3620d62a529a01"
+$GradleVersion = "8.11.1"
+$GradleSha256 = "f397b287023acdba1e9f6fc5ea72d22dd63669d59ed4a289a29b1a76eee151c6"
 $ToolsDir = Join-Path $ProjectRoot ".local-tools"
 $ZipPath = Join-Path $ToolsDir "gradle-$GradleVersion-bin.zip"
 $GradleHome = Join-Path $ToolsDir "gradle-$GradleVersion"
@@ -23,13 +23,13 @@ if (-not $env:ANDROID_SDK_ROOT -and -not $env:ANDROID_HOME) {
     if (Test-Path $DefaultSdk) {
         $env:ANDROID_SDK_ROOT = $DefaultSdk
     } else {
-        throw "Android SDK not found. Install Android Studio, SDK Platform 37, and Build Tools 36.0.0."
+        throw "Android SDK not found. Install Android Studio, SDK Platform 36, and Build Tools 36.0.0."
     }
 }
 
 $SdkRoot = if ($env:ANDROID_SDK_ROOT) { $env:ANDROID_SDK_ROOT } else { $env:ANDROID_HOME }
-if (-not (Test-Path (Join-Path $SdkRoot "platforms\android-37"))) {
-    throw "SDK Platform 37 is missing. Install it from Android Studio > SDK Manager."
+if (-not (Test-Path (Join-Path $SdkRoot "platforms\android-36"))) {
+    throw "SDK Platform 36 is missing. Install it from Android Studio > SDK Manager."
 }
 
 if (-not (Test-Path $GradleExe)) {
