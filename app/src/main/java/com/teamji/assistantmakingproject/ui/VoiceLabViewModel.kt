@@ -311,7 +311,7 @@ class VoiceLabViewModel(application: Application) : AndroidViewModel(application
         samplePlayer = null
         baseVoice.stop()
         recordingTimer?.cancel()
-        CoroutineScope(Dispatchers.IO).launch { recorder.stop(); baseVoice.release() }
+        CoroutineScope(Dispatchers.IO).launch { recorder.stop(); activeRecordingFile?.delete(); baseVoice.release() }
         player.stop()
         super.onCleared()
     }
