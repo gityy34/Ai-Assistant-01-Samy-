@@ -12,8 +12,8 @@ android {
         applicationId = "com.teamji.assistantmakingproject"
         minSdk = 29
         targetSdk = 36
-        versionCode = 4
-        versionName = "0.1.4-buffered-reading"
+        versionCode = 5
+        versionName = "0.1.5-voice-lab-review"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
@@ -49,7 +49,10 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
 
     testImplementation("junit:junit:4.13.2")
+    androidTestImplementation("androidx.test:rules:1.6.1")
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4:1.7.8")
+    debugImplementation("androidx.compose.ui:ui-test-manifest:1.7.8")
     debugImplementation("androidx.compose.ui:ui-tooling:1.7.8")
 }

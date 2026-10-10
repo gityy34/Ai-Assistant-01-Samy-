@@ -43,12 +43,18 @@ class WavAudioRecorder(private val context: Context) {
             encoding,
             bufferSize,
         )
-        check(audioRecord.state == AudioRecord.STATE_INITIALIZED) { "AudioRecord failed to initialize" }
+        if (audioRecord.state != AudioRecord.STATE_INITIALIZED) {
+            audioRecord.release()
+            error("AudioRecord failed to initialize")
+        }
 
-        output.parentFile?.mkdirs()
-        val raf = RandomAccessFile(output, "rw")
-        raf.setLength(0)
-        writeWavHeader(raf, sampleRate, 1, 16, 0)
+        val raf = try {
+            output.parentFile?.mkdirs()
+            RandomAccessFile(output, "rw").also { file ->
+                try { file.setLength(0); writeWavHeader(file, sampleRate, 1, 16, 0) }
+                catch (error: Throwable) { file.close(); throw error }
+            }
+        } catch (error: Throwable) { audioRecord.release(); output.delete(); throw error }
 
         recorder = audioRecord
         recording.set(true)
@@ -69,20 +75,26 @@ class WavAudioRecorder(private val context: Context) {
         job = scope.launch(Dispatchers.IO) {
             val buffer = ByteArray(bufferSize)
             var pcmBytes = 0L
+            var failed = false
             try {
                 while (isActive && recording.get()) {
                     val read = audioRecord.read(buffer, 0, buffer.size)
+                    if (read < 0 && recording.get()) error("Microphone read failed: $read")
                     if (read > 0) {
                         raf.write(buffer, 0, read)
                         pcmBytes += read
                     }
                 }
+            } catch (error: Throwable) {
+                failed = true
+                android.util.Log.e("VoiceRecorder", "Recording failed", error)
             } finally {
+                recording.set(false)
                 runCatching { audioRecord.stop() }
-                audioRecord.release()
-                raf.seek(0)
-                writeWavHeader(raf, sampleRate, 1, 16, pcmBytes)
-                raf.close()
+                runCatching { audioRecord.release() }
+                runCatching { raf.seek(0); writeWavHeader(raf, sampleRate, 1, 16, pcmBytes) }.onFailure { failed = true }
+                runCatching { raf.close() }
+                if (failed || pcmBytes == 0L) output.delete()
             }
         }
     }

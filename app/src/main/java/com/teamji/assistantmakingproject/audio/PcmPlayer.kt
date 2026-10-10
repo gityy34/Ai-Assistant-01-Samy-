@@ -10,7 +10,7 @@ class PcmPlayer {
         play(samples, sampleRateHz)
         val active = checkNotNull(track)
         try {
-            kotlinx.coroutines.withTimeout(samples.size.toLong() * 1000 / sampleRateHz + 15_000) {
+            kotlinx.coroutines.withTimeout((samples.size.toDouble() * 1000 / sampleRateHz / speed).toLong() + 15_000) {
                 while (track === active && active.playbackHeadPosition < samples.size) {
                     kotlinx.coroutines.delay(25)
                 }

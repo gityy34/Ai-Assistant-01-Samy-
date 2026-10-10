@@ -31,6 +31,7 @@ import com.teamji.assistantmakingproject.voice.SpeechQueue
 
 data class VoiceLabUiState(
     val isRecording: Boolean = false,
+    val recordingSeconds: Int = 0,
     val gender: VoiceGender = VoiceGender.MALE,
     val speed: Float = 1f,
     val resultLabel: String? = null,
@@ -38,7 +39,7 @@ data class VoiceLabUiState(
     val sampleFile: File? = null,
     val text: String = "السلام علیکم۔ یہ بنیادی آواز کا ٹیسٹ ہے۔",
     val language: ReplyLanguage = LanguagePolicy.defaultLanguage,
-    val status: String = "No voice sample loaded",
+    val status: String = "نمونہ ابھی ریکارڈ نہیں ہوا؛ بنیادی آواز استعمال کر سکتے ہیں",
     val isBusy: Boolean = false,
     val engineName: String = "",
 )
@@ -53,6 +54,7 @@ class VoiceLabViewModel(application: Application) : AndroidViewModel(application
     private var previewJob: Job? = null
     private var generation = 0
     private var activeRecordingFile: File? = null
+    private var recordingTimer: Job? = null
 
     private val _state = MutableStateFlow(VoiceLabUiState(engineName = "Base voices + experimental English cloning; Urdu cloning pending"))
     val state: StateFlow<VoiceLabUiState> = _state.asStateFlow()
@@ -61,16 +63,25 @@ class VoiceLabViewModel(application: Application) : AndroidViewModel(application
         val lastSample = File(application.filesDir, "voice_samples").listFiles()
             ?.filter { it.extension == "wav" && it.length() > 44L }?.maxByOrNull { it.lastModified() }
         if (lastSample != null) _state.update {
-            it.copy(sampleFile = lastSample, sampleName = lastSample.name, status = "Saved voice sample restored")
+            it.copy(sampleFile = lastSample, sampleName = lastSample.name, status = "محفوظ ریکارڈنگ موجود ہے")
         }
     }
 
     fun startRecording() {
-        val output = File(getApplication<Application>().filesDir, "voice_samples/recorded_${System.currentTimeMillis()}.wav")
+        if (_state.value.isBusy || _state.value.isRecording) return
+        val output = File(getApplication<Application>().filesDir, "voice_samples/recorded_${System.currentTimeMillis()}.partial")
         runCatching {
             recorder.start(viewModelScope, output)
             activeRecordingFile = output
-            _state.update { it.copy(isRecording = true, status = "Recording… microphone is active") }
+            _state.update { it.copy(isRecording = true, recordingSeconds = 0, status = "ریکارڈنگ جاری ہے — زیادہ سے زیادہ 15 سیکنڈ") }
+            recordingTimer = viewModelScope.launch {
+                for (second in 1..15) {
+                    kotlinx.coroutines.delay(1000)
+                    if (!_state.value.isRecording) return@launch
+                    _state.update { it.copy(recordingSeconds = second) }
+                }
+                stopRecording()
+            }
         }.onFailure { error ->
             activeRecordingFile = null
             _state.update { it.copy(status = error.message ?: "Unable to start recording") }
@@ -78,42 +89,56 @@ class VoiceLabViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun stopRecording() {
+        if (!_state.value.isRecording || _state.value.isBusy) return
+        recordingTimer?.cancel()
+        _state.update { it.copy(isBusy = true, status = "ریکارڈنگ محفوظ ہو رہی ہے…") }
         viewModelScope.launch {
-            recorder.stop()
-            val recordedFile = activeRecordingFile?.takeIf { it.isFile && it.length() > 44L }
-            activeRecordingFile = null
-            _state.update {
-                it.copy(
-                    isRecording = false,
-                    sampleFile = recordedFile,
-                    sampleName = recordedFile?.name,
-                    status = if (recordedFile != null) "Voice sample ready" else "Recording failed",
-                )
+            try {
+                recorder.stop()
+                val partial = activeRecordingFile
+                val ready = partial?.takeIf { it.isFile && it.length() > 44L }?.let {
+                    val target = File(it.parentFile, it.nameWithoutExtension + ".wav")
+                    if (it.renameTo(target)) target else null
+                }
+                _state.update {
+                    it.copy(isRecording = false, isBusy = false,
+                        sampleFile = ready ?: it.sampleFile, sampleName = ready?.name ?: it.sampleName,
+                        status = if (ready != null) "آپ کی ریکارڈنگ محفوظ ہے" else "ریکارڈنگ مکمل نہیں ہوئی؛ دوبارہ کوشش کریں")
+                }
+            } catch (error: Throwable) {
+                if (error is CancellationException) throw error
+                _state.update { it.copy(isRecording = false, isBusy = false, status = "ریکارڈنگ محفوظ نہیں ہوئی: ${error.message}") }
+            } finally {
+                activeRecordingFile?.delete()
+                activeRecordingFile = null
             }
         }
     }
 
     fun onMicrophonePermissionDenied() {
-        _state.update { it.copy(status = "Microphone permission was denied") }
+        _state.update { it.copy(status = "مائیکروفون کی اجازت نہیں ملی") }
     }
 
     fun importAudio(uri: Uri) {
-        viewModelScope.launch {
-            runCatching { withContext(Dispatchers.IO) { imports.copyIntoPrivateStorage(uri) } }
-                .onSuccess { file ->
-                    _state.update {
-                        it.copy(sampleFile = file, sampleName = file.name, status = "Imported voice sample ready")
-                    }
+        if (_state.value.isBusy || _state.value.isRecording) return
+        val requestId = ++generation
+        _state.update { it.copy(isBusy = true, status = "آواز امپورٹ ہو رہی ہے…") }
+        previewJob = viewModelScope.launch {
+            try {
+                val file = withContext(Dispatchers.IO) { imports.copyIntoPrivateStorage(uri) }
+                if (generation == requestId) _state.update {
+                    it.copy(sampleFile = file, sampleName = file.name, isBusy = false, status = "امپورٹ کیا ہوا نمونہ محفوظ ہے")
                 }
-                .onFailure { error ->
-                    _state.update { it.copy(status = error.message ?: "Import failed") }
-                }
+            } catch (error: Throwable) {
+                if (error is CancellationException) throw error
+                if (generation == requestId) _state.update { it.copy(isBusy = false, status = "امپورٹ نہیں ہوا: ${error.message}") }
+            }
         }
     }
 
     fun setSpeed(speed: Float) { if (!_state.value.isBusy) _state.update { it.copy(speed = speed.coerceIn(0.85f, 1.4f)) } }
 
-    fun setGender(gender: VoiceGender) = _state.update { it.copy(gender = gender) }
+    fun setGender(gender: VoiceGender) { if (!_state.value.isBusy && !_state.value.isRecording) _state.update { it.copy(gender = gender) } }
 
     fun playSample() {
         val sample = _state.value.sampleFile ?: return
@@ -127,18 +152,18 @@ class VoiceLabViewModel(application: Application) : AndroidViewModel(application
                 setOnCompletionListener {
                     it.release()
                     samplePlayer = null
-                    _state.update { state -> state.copy(isBusy = false, status = "Sample playback complete") }
+                    _state.update { state -> state.copy(isBusy = false, status = "ریکارڈنگ سننا مکمل ہوا") }
                 }
                 setOnErrorListener { mp, _, _ ->
                     mp.release()
                     samplePlayer = null
-                    _state.update { state -> state.copy(isBusy = false, status = "Sample playback failed") }
+                    _state.update { state -> state.copy(isBusy = false, status = "ریکارڈنگ نہیں چل سکی") }
                     true
                 }
                 prepare()
                 start()
             }
-            _state.update { it.copy(isBusy = true, status = "Playing your recorded sample") }
+            _state.update { it.copy(isBusy = true, status = "آپ کی ریکارڈنگ چل رہی ہے") }
         }.onFailure {
             samplePlayer?.release()
             samplePlayer = null
@@ -151,11 +176,11 @@ class VoiceLabViewModel(application: Application) : AndroidViewModel(application
         if (_state.value.isBusy || _state.value.isRecording) return
         val requestId = ++generation
         previewJob = viewModelScope.launch {
-            _state.update { it.copy(isBusy = true, status = "Playing last generated segment") }
+            _state.update { it.copy(isBusy = true, status = "آخری تیار شدہ حصہ چل رہا ہے") }
             try {
                 player.speed = _state.value.speed
                 player.playAndWait(audio.pcm16, audio.sampleRateHz)
-                if (generation == requestId) _state.update { it.copy(isBusy = false, status = "Playback complete") }
+                if (generation == requestId) _state.update { it.copy(isBusy = false, status = "آواز مکمل ہوئی") }
             } catch (error: Throwable) {
                 if (error is CancellationException) throw error
                 if (generation == requestId) _state.update { it.copy(isBusy = false, status = "Playback failed: ${error.message}") }
@@ -163,9 +188,10 @@ class VoiceLabViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    fun updateText(value: String) = _state.update { it.copy(text = value) }
+    fun updateText(value: String) { if (!_state.value.isBusy && !_state.value.isRecording) _state.update { it.copy(text = value.take(20_000)) } }
 
     fun setLanguage(language: ReplyLanguage) {
+        if (_state.value.isBusy || _state.value.isRecording) return
         _state.update {
             val suggested = if (language == ReplyLanguage.URDU) {
                 "السلام علیکم۔ یہ بنیادی آواز کا ٹیسٹ ہے۔"
@@ -187,17 +213,17 @@ class VoiceLabViewModel(application: Application) : AndroidViewModel(application
         if (snapshot.isBusy || snapshot.isRecording || snapshot.text.isBlank()) return
         val requestId = ++generation
         previewJob = viewModelScope.launch {
-            _state.update { it.copy(isBusy = true, status = "Preparing base voice (not cloned)…") }
+            _state.update { it.copy(isBusy = true, status = "بنیادی آواز تیار ہو رہی ہے…") }
             runCatching {
                 val parts = SpeechTextPlanner.plan(snapshot.text, snapshot.language)
                 player.speed = snapshot.speed
                 baseVoice.withSession {
                     SpeechQueue.play(parts, prepare = { index, part ->
-                        if (generation != requestId) throw CancellationException("Stopped")
+                        if (generation != requestId) throw CancellationException("روک دیا گیا")
                         if (index < 2) _state.update { it.copy(status = "Buffering speech ${index + 1}/${minOf(2, parts.size)}…") }
                         baseVoice.synthesize(part.text, part.language, snapshot.gender)
                     }, consume = { index, audio ->
-                        if (generation != requestId) throw CancellationException("Stopped")
+                        if (generation != requestId) throw CancellationException("روک دیا گیا")
                         lastOutput = audio
                         _state.update { it.copy(resultLabel = "Base Voice — ${snapshot.gender.name}", status = "Reading ${index + 1}/${parts.size} — ${snapshot.gender.name}, ${snapshot.speed}x") }
                         player.playAndWait(audio.pcm16, audio.sampleRateHz)
@@ -206,7 +232,7 @@ class VoiceLabViewModel(application: Application) : AndroidViewModel(application
             }
                 .onSuccess {
                     if (generation == requestId) {
-                        _state.update { it.copy(isBusy = false, status = "Reading complete") }
+                        _state.update { it.copy(isBusy = false, status = "متن پڑھنا مکمل ہوا") }
                     }
                 }
                 .onFailure { error ->
@@ -241,16 +267,16 @@ class VoiceLabViewModel(application: Application) : AndroidViewModel(application
         }
         val requestId = ++generation
         previewJob = viewModelScope.launch {
-            _state.update { it.copy(isBusy = true, status = "Preparing experimental English clone…") }
+            _state.update { it.copy(isBusy = true, status = "انگلش کلون کا تجربہ تیار ہو رہا ہے…") }
             try {
                 player.speed = snapshot.speed
                 baseVoice.withSession {
                     SpeechQueue.play(parts, prepare = { index, part ->
-                        if (generation != requestId) throw CancellationException("Stopped")
+                        if (generation != requestId) throw CancellationException("روک دیا گیا")
                         if (index < 2) _state.update { it.copy(status = "Buffering experimental clone — sample: ${sample.name}") }
                         baseVoice.synthesize(part.text, part.language, reference = sample)
                     }, consume = { index, audio ->
-                        if (generation != requestId) throw CancellationException("Stopped")
+                        if (generation != requestId) throw CancellationException("روک دیا گیا")
                         lastOutput = audio
                         _state.update { it.copy(resultLabel = "Reference test — ${sample.name}", status = "Reference-conditioned test ${index + 1}/${parts.size} — verify similarity") }
                         player.playAndWait(audio.pcm16, audio.sampleRateHz)
@@ -272,10 +298,11 @@ class VoiceLabViewModel(application: Application) : AndroidViewModel(application
         previewJob?.cancel()
         baseVoice.stop()
         if (_state.value.isRecording) {
-            stopRecording()
+            if (!_state.value.isBusy) stopRecording()
+            return
         }
         player.stop()
-        _state.update { it.copy(isBusy = false, status = "Stopped") }
+        _state.update { it.copy(isBusy = false, status = "روک دیا گیا") }
     }
 
     override fun onCleared() {
@@ -283,7 +310,8 @@ class VoiceLabViewModel(application: Application) : AndroidViewModel(application
         samplePlayer?.release()
         samplePlayer = null
         baseVoice.stop()
-        CoroutineScope(Dispatchers.IO).launch { baseVoice.release() }
+        recordingTimer?.cancel()
+        CoroutineScope(Dispatchers.IO).launch { recorder.stop(); baseVoice.release() }
         player.stop()
         super.onCleared()
     }

@@ -42,6 +42,7 @@ jobs:
             mkdir -p verification
             gradle --no-daemon -PtestAbi=x86_64 connectedDebugAndroidTest || { adb logcat -d > verification/emulator-logcat.txt; exit 1; }
             adb logcat -d > verification/emulator-logcat.txt
+            adb pull /sdcard/Android/data/com.teamji.assistantmakingproject/files/ui-review verification/ui-review || true
       - name: Collect native crash diagnostics
         if: always()
         run: |
