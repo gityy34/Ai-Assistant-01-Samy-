@@ -130,12 +130,17 @@ private fun VoiceLabScreen(vm: VoiceLabViewModel = viewModel()) {
 
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Button(onClick = vm::speak, enabled = !state.isBusy) {
-                Text("Speak")
+                Text("Clone Voice")
             }
             Button(onClick = vm::stop) {
                 Text("Stop")
             }
         }
+
+        Button(onClick = vm::previewBaseVoice, enabled = !state.isBusy && !state.isRecording) {
+            Text("بنیادی آواز کا ٹیسٹ / Base voice")
+        }
+        Text("Base voice uses Fasih / Lessac. Your recorded voice is not used for this test.")
 
         Text(
             "Privacy: voice samples are copied to app-private storage. " +

@@ -1,36 +1,9 @@
-# Demo 1 Build Status
+# Build checkpoint — October 10, 2026
 
-Audit date: October 9, 2026
+The initial GitHub Actions build failed because platforms;android-37 was unavailable.
+The corrected baseline uses compileSdk/targetSdk 36, AGP 8.10.1, Kotlin 2.1.20, Gradle 8.11.1 and JDK 17.
+The SDK installation step passed in the next run; APK compilation and unit tests are pending confirmation.
 
-## Corrected in source version 0.1.1
-
-- Migrated AGP 9.4 configuration to built-in Kotlin instead of applying the obsolete Kotlin Android plugin.
-- Raised `compileSdk` from 36 to 37 because Compose UI 1.12 requires SDK 37; `targetSdk` remains 36 for Android 16.
-- Replaced the nonexistent stable Lifecycle 2.12.0 dependency with stable Lifecycle 2.11.0.
-- Added Java 17 compile settings.
-- Added a reproducible Windows build script pinned to Gradle 9.6.0 with SHA-256 verification.
-- Fixed recorded-file selection so stopping a recording cannot accidentally select a newer imported file.
-- Added microphone-permission denial feedback.
-- Added strict validation for imported reference WAV files.
-- Added WAV validation unit tests.
-- Added model-pack path and SHA-256 verification with unit tests, ready to protect future Piper/converter model installation.
-- Added defensive PCM playback validation and made the screen scrollable on smaller displays.
-
-## Verification completed in Work
-
-- ZIP integrity and complete source tree inspected.
-- Kotlin/Compose architecture and Android manifest inspected.
-- Dependency versions checked against current Android developer release information.
-- Gradle/SDK prerequisites and the build path documented.
-
-## Verification not possible in this Work runtime
-
-- Android compilation was not run because this runtime has no Android SDK or Gradle installation and cannot fetch the 134 MB Gradle distribution from the restricted build network.
-- No APK is claimed from this runtime.
-- No OPPO Reno11 F device test has occurred.
-- No Urdu or English voice-cloning backend is installed yet.
-- sherpa-onnx Android TTS support was confirmed upstream, but its AAR is not yet bundled because the exact runtime package and ARM64 device behavior still require verification.
-
-## Next engineering gate
-
-Run `scripts/build-demo1.ps1` on a Windows machine with Android Studio, SDK Platform 37, and Build Tools 36.0.0. Only after the shell build and recording/import tests pass should the Piper Urdu base voice and a separately verified speaker-conversion runtime be integrated.
+The base voice candidate bundles checksum-verified sherpa-onnx 1.13.8, Urdu Fasih and English Lessac.
+The Base voice button is distinct from Clone Voice. The speaker-conversion backend is still unconfigured.
+Do not describe this as completed voice cloning or a phone-tested product.

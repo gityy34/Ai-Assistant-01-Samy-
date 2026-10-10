@@ -13,6 +13,9 @@ import com.teamji.assistantmakingproject.voice.SynthesisRequest
 import com.teamji.assistantmakingproject.voice.UnconfiguredMultilingualVoiceEngine
 import com.teamji.assistantmakingproject.voice.VoiceCloneEngine
 import com.teamji.assistantmakingproject.voice.VoiceReference
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import com.teamji.assistantmakingproject.voice.PiperBaseVoice
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -36,6 +39,8 @@ class VoiceLabViewModel(application: Application) : AndroidViewModel(application
     private val recorder = WavAudioRecorder(application)
     private val imports = ImportedAudioStore(application)
     private val player = PcmPlayer()
+    private val baseVoice = PiperBaseVoice(application)
+    private var generation = 0
     private val engine: VoiceCloneEngine = UnconfiguredMultilingualVoiceEngine()
     private var activeRecordingFile: File? = null
 
@@ -101,6 +106,26 @@ class VoiceLabViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    fun previewBaseVoice() {
+        val snapshot = _state.value
+        if (snapshot.isBusy || snapshot.isRecording || snapshot.text.isBlank()) return
+        val requestId = ++generation
+        viewModelScope.launch {
+            _state.update { it.copy(isBusy = true, status = "Preparing base voice (not cloned)…") }
+            runCatching { baseVoice.synthesize(snapshot.text, snapshot.language) }
+                .onSuccess { audio ->
+                    if (generation == requestId) {
+                        player.play(audio.pcm16, audio.sampleRateHz)
+                        _state.update { it.copy(isBusy = false, status = "Playing base voice — not cloned") }
+                    }
+                }
+                .onFailure { error ->
+                    if (generation == requestId)
+                        _state.update { it.copy(isBusy = false, status = error.message ?: "Base voice failed") }
+                }
+        }
+    }
+
     fun speak() {
         val snapshot = _state.value
         val sample = snapshot.sampleFile
@@ -139,6 +164,8 @@ class VoiceLabViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun stop() {
+        generation++
+        baseVoice.stop()
         if (_state.value.isRecording) {
             stopRecording()
         }
@@ -148,6 +175,9 @@ class VoiceLabViewModel(application: Application) : AndroidViewModel(application
     }
 
     override fun onCleared() {
+        generation++
+        baseVoice.stop()
+        CoroutineScope(Dispatchers.IO).launch { baseVoice.release() }
         player.stop()
         engine.release()
         super.onCleared()

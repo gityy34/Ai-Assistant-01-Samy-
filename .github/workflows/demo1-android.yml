@@ -28,13 +28,16 @@ jobs:
           $manager = Join-Path $sdk 'cmdline-tools/latest/bin/sdkmanager.bat'
           & $manager 'platforms;android-36' 'build-tools;35.0.0' 'build-tools;36.0.0' 'platform-tools'
           if ($LASTEXITCODE -ne 0) { throw 'SDK installation failed' }
+      - name: Prepare checksum-verified offline base voices
+        shell: pwsh
+        run: ./scripts/prepare-base-voices.ps1
       - name: Run unit tests and build debug APK
         shell: pwsh
         run: ./scripts/build-demo1.ps1
       - name: Upload shell APK
         uses: actions/upload-artifact@v7
         with:
-          name: Demo1-shell-debug
+          name: Demo1-base-voice-debug
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14

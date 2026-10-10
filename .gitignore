@@ -1,8 +1,7 @@
 .gradle/
-.idea/
 .local-tools/
-build/
-app/build/
 local.properties
-verification/*.log
-*.iml
+**/build/
+app/libs/*.aar
+app/src/main/assets/models/
+verification/
