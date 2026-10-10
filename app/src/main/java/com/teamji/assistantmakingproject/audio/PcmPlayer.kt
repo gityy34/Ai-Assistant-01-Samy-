@@ -36,9 +36,11 @@ class PcmPlayer {
             .build()
         track = audioTrack
         try {
-            check(audioTrack.state == AudioTrack.STATE_INITIALIZED) { "Audio output initialization failed" }
+            // MODE_STATIC is STATE_NO_STATIC_DATA until PCM has been written.
+            check(audioTrack.state != AudioTrack.STATE_UNINITIALIZED) { "Audio output initialization failed" }
             val written = audioTrack.write(samples, 0, samples.size)
             check(written == samples.size) { "Audio output accepted only $written of ${samples.size} samples" }
+            check(audioTrack.state == AudioTrack.STATE_INITIALIZED) { "Audio output buffer was not prepared" }
             audioTrack.play()
         } catch (error: Throwable) {
             stop()
