@@ -19,6 +19,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -41,7 +43,9 @@ class MainActivity : ComponentActivity() {
                 background = Color(0xFFF4F7F8), surface = Color.White,
                 secondaryContainer = Color(0xFFD9EFEA), onSecondaryContainer = Color(0xFF123B34)
             )
-            MaterialTheme(colorScheme = colors) { VoiceLabScreen() }
+            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+                MaterialTheme(colorScheme = colors) { VoiceLabScreen() }
+            }
         }
     }
 }
@@ -78,7 +82,7 @@ private fun VoiceLabScreen(vm: VoiceLabViewModel = viewModel()) {
                 Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Button(
                         onClick = { if (cloneMode) vm.speak() else vm.previewBaseVoice() },
-                        enabled = !locked && state.text.isNotBlank() && (!cloneMode || state.sampleFile != null),
+                        enabled = !locked && state.text.isNotBlank() && (!cloneMode || (state.sampleFile != null && state.language == ReplyLanguage.ENGLISH)),
                         modifier = Modifier.weight(1f).testTag("speak")
                     ) { Text(if (cloneMode) "کلون آزمائیں" else "متن سنیں") }
                     OutlinedButton(
