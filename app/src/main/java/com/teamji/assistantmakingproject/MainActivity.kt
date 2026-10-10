@@ -158,7 +158,7 @@ private fun VoiceLabScreen(vm: VoiceLabViewModel = viewModel()) {
         }
 
         Text("بنیادی آواز — ہر زبان میں دو انتخاب")
-        Text(if (state.language == ReplyLanguage.URDU) "اردو: Fasih (مرد)، Aegis (عورت)" else "English: Lessac (Male), HFC Female (Female)")
+        Text(if (state.language == ReplyLanguage.URDU) "اردو: Fasih (مرد)، Aegis (عورت)" else "English: HFC Male (Male), HFC Female (Female)")
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FilterChip(selected = state.gender == VoiceGender.MALE, onClick = { vm.setGender(VoiceGender.MALE) }, enabled = !state.isBusy, label = { Text("مرد / Male") })
             FilterChip(selected = state.gender == VoiceGender.FEMALE, onClick = { vm.setGender(VoiceGender.FEMALE) }, enabled = !state.isBusy, label = { Text("عورت / Female") })
@@ -199,7 +199,7 @@ private fun VoiceLabScreen(vm: VoiceLabViewModel = viewModel()) {
             }
         }
         Text("کلوننگ کا تجربہ اپنی ریکارڈنگ استعمال کرتا ہے؛ مرد/عورت کا انتخاب صرف Base Voice کے لیے ہے۔ مشابہت ابھی تصدیق طلب ہے۔")
-        Text("Urdu: Fasih / Aegis. English: Lessac / HFC Female. Base voices do not use your recording. English cloning is a separate experimental test.")
+        Text("Urdu: Fasih / Aegis. English: HFC Male / HFC Female. Base voices do not use your recording. English cloning is a separate experimental test.")
         Button(enabled = !state.isBusy, onClick = {
             scope.launch {
                 val diagnostics = withContext(Dispatchers.IO) { VoiceDiagnostics.collect(context) }

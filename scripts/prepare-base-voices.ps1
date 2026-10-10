@@ -17,7 +17,7 @@ $assets = Join-Path $root 'app/src/main/assets/models'
 New-Item -ItemType Directory -Force $assets | Out-Null
 $packs = @(
     @{ Name = 'vits-piper-ur_PK-fasih-medium'; Hash = 'de64e03109f3c896b7cf910db6d9ffd2703e3d665580d9a19bedbf3e0760d0e4' },
-    @{ Name = 'vits-piper-en_US-lessac-medium'; Hash = '9e3febfacf0abf4270172d2958bcec246032b7e88efc2720840cc80c93de334e' },
+    @{ Name = 'vits-piper-en_US-hfc_male-medium'; Hash = '76388f84acfca8ba5c0ed1636a26ada14c598abd52e76f110d4756fe326fc5f2' },
     @{ Name = 'vits-piper-en_US-hfc_female-medium-int8'; Hash = '7c467d19054ddf84056a4887a8be75f5f3b2a5d426637b526953a5e488fec5ce' },
     @{ Name = 'sherpa-onnx-pocket-tts-int8-2026-01-26'; Hash = '2f3b88823cbbb9bf0b2477ec8ae7b3fec417b3a87b6bb5f256dba66f2ad967cb' }
 )

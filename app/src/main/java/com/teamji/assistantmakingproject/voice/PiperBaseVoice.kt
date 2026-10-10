@@ -28,7 +28,7 @@ class PiperBaseVoice(private val context: Context) {
                 language == ReplyLanguage.URDU && gender == VoiceGender.FEMALE -> "vits-piper-ur_PK-aegis_female-medium"
                 language == ReplyLanguage.URDU -> "vits-piper-ur_PK-fasih-medium"
                 gender == VoiceGender.FEMALE -> "vits-piper-en_US-hfc_female-medium-int8"
-                else -> "vits-piper-en_US-lessac-medium"
+                else -> "vits-piper-en_US-hfc_male-medium"
             }
             if (loadedLanguage != language || loadedGender != gender || tts == null) {
                 tts?.release()
