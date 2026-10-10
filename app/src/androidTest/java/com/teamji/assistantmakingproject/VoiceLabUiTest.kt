@@ -2,6 +2,9 @@ package com.teamji.assistantmakingproject
 
 import android.Manifest
 import android.graphics.Bitmap
+import android.content.res.Configuration
+import androidx.compose.ui.graphics.asAndroidBitmap
+import java.io.FileInputStream
 import android.content.ContentValues
 import android.provider.MediaStore
 import androidx.compose.ui.test.*
@@ -69,6 +72,32 @@ class VoiceLabUiTest {
         screenshot("02-recording")
     }
 
+    @Test fun largeFontAndDarkModeKeepThePrimaryActionVisible() {
+        try {
+            shell("settings put system font_scale 1.6")
+            compose.waitUntil(10_000) { compose.activity.resources.configuration.fontScale >= 1.55f }
+            compose.activityRule.scenario.recreate()
+            compose.onNodeWithTag("speak").assertIsDisplayed()
+            screenshot("03-large-font")
+            shell("cmd uimode night yes")
+            compose.waitUntil(10_000) {
+                compose.activity.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
+            }
+            compose.activityRule.scenario.recreate()
+            compose.onNodeWithTag("speak").assertIsDisplayed()
+            screenshot("04-dark-large-font")
+        } finally {
+            shell("settings put system font_scale 1.0")
+            shell("cmd uimode night no")
+        }
+    }
+
+    private fun shell(command: String) {
+        InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand(command).use { descriptor ->
+            FileInputStream(descriptor.fileDescriptor).use { it.readBytes() }
+        }
+    }
+
     private fun screenshot(name: String) {
         compose.waitForIdle()
         val instrumentation = InstrumentationRegistry.getInstrumentation()
@@ -79,7 +108,7 @@ class VoiceLabUiTest {
             put(MediaStore.MediaColumns.RELATIVE_PATH, "Download/voice-lab-review")
         }
         val uri = checkNotNull(context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values))
-        val bitmap = instrumentation.uiAutomation.takeScreenshot()
+        val bitmap = compose.onRoot().captureToImage().asAndroidBitmap()
         checkNotNull(context.contentResolver.openOutputStream(uri)).use {
             check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it))
         }
