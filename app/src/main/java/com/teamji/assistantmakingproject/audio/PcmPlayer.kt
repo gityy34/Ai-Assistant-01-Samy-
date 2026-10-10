@@ -5,6 +5,20 @@ import android.media.AudioFormat
 import android.media.AudioTrack
 
 class PcmPlayer {
+    suspend fun playAndWait(samples: ShortArray, sampleRateHz: Int) {
+        play(samples, sampleRateHz)
+        val active = checkNotNull(track)
+        try {
+            kotlinx.coroutines.withTimeout(samples.size.toLong() * 1000 / sampleRateHz + 15_000) {
+                while (track === active && active.playbackHeadPosition < samples.size) {
+                    kotlinx.coroutines.delay(25)
+                }
+            }
+        } finally {
+            if (track === active) stop()
+        }
+    }
+
     private var track: AudioTrack? = null
 
     fun play(samples: ShortArray, sampleRateHz: Int) {

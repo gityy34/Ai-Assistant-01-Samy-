@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.teamji.assistantmakingproject.ui.VoiceLabViewModel
+import com.teamji.assistantmakingproject.voice.VoiceGender
 import com.teamji.assistantmakingproject.voice.ReplyLanguage
 import com.teamji.assistantmakingproject.voice.VoiceDiagnostics
 import kotlinx.coroutines.Dispatchers
@@ -77,6 +78,22 @@ private fun VoiceLabScreen(vm: VoiceLabViewModel = viewModel()) {
         if (uri != null) vm.importAudio(uri)
     }
 
+    val exportSample = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("audio/wav")
+    ) { uri ->
+        val sample = state.sampleFile
+        if (uri != null && sample != null) scope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    context.contentResolver.openOutputStream(uri)?.use { output ->
+                        sample.inputStream().use { it.copyTo(output) }
+                    } ?: error("Unable to save recording")
+                }
+            }
+            Toast.makeText(context, if (result.isSuccess) "Recording saved" else "Saving failed", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -115,8 +132,15 @@ private fun VoiceLabScreen(vm: VoiceLabViewModel = viewModel()) {
         }
 
         Text("Voice status: ${state.status}")
-        Text("Reference format: 8–12 seconds, mono 16 kHz PCM WAV")
-        state.sampleName?.let { Text("Sample: $it") }
+        Text("کلوننگ کے لیے 8–12 سیکنڈ صاف آواز ریکارڈ کریں۔ فارمیٹ: mono 16 kHz PCM WAV")
+        state.sampleName?.let {
+            Text("Sample: $it")
+            Text("آپ کی ریکارڈنگ محفوظ ہے۔ سنیں یا WAV فائل اپنے فون میں محفوظ کریں۔")
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = vm::playSample, enabled = !state.isBusy && !state.isRecording) { Text("نمونہ سنیں") }
+                Button(onClick = { exportSample.launch(it) }, enabled = !state.isBusy && !state.isRecording) { Text("Save WAV") }
+            }
+        }
         Text("Engine: ${state.engineName}")
 
         Text("Reply / speech language")
@@ -133,6 +157,13 @@ private fun VoiceLabScreen(vm: VoiceLabViewModel = viewModel()) {
             )
         }
 
+        Text("آواز / Voice")
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(selected = state.gender == VoiceGender.MALE, onClick = { vm.setGender(VoiceGender.MALE) }, enabled = !state.isBusy, label = { Text("مرد / Male") })
+            FilterChip(selected = state.gender == VoiceGender.FEMALE, onClick = { vm.setGender(VoiceGender.FEMALE) }, enabled = !state.isBusy, label = { Text("عورت / Female") })
+        }
+        Text("ملے ہوئے متن میں اردو اور انگلش کے حصے اپنی زبان کی آواز میں پڑھے جائیں گے۔")
+
         OutlinedTextField(
             value = state.text,
             onValueChange = vm::updateText,
@@ -142,8 +173,8 @@ private fun VoiceLabScreen(vm: VoiceLabViewModel = viewModel()) {
         )
 
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Button(onClick = vm::speak, enabled = !state.isBusy) {
-                Text("Clone Voice (pending)")
+            Button(onClick = vm::speak, enabled = !state.isBusy && !state.isRecording) {
+                Text("Clone Voice (English test)")
             }
             Button(onClick = vm::stop) {
                 Text("Stop")
@@ -153,7 +184,7 @@ private fun VoiceLabScreen(vm: VoiceLabViewModel = viewModel()) {
         Button(onClick = vm::previewBaseVoice, enabled = !state.isBusy && !state.isRecording) {
             Text("بنیادی آواز کا ٹیسٹ / Base voice")
         }
-        Text("Base voice uses Fasih / Lessac. Your recorded voice is not used for this test.")
+        Text("Urdu: Fasih / Aegis. English: Lessac / HFC Female. Base voices do not use your recording. English cloning is a separate experimental test.")
         Button(enabled = !state.isBusy, onClick = {
             scope.launch {
                 val diagnostics = withContext(Dispatchers.IO) { VoiceDiagnostics.collect(context) }

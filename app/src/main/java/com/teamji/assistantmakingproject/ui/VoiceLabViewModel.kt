@@ -25,11 +25,16 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
+import android.media.MediaPlayer
+import com.teamji.assistantmakingproject.voice.VoiceGender
+import com.teamji.assistantmakingproject.voice.SpeechTextPlanner
 
 
 data class VoiceLabUiState(
     val isRecording: Boolean = false,
+    val gender: VoiceGender = VoiceGender.MALE,
     val sampleName: String? = null,
     val sampleFile: File? = null,
     val text: String = "السلام علیکم۔ یہ بنیادی آواز کا ٹیسٹ ہے۔",
@@ -43,14 +48,23 @@ class VoiceLabViewModel(application: Application) : AndroidViewModel(application
     private val recorder = WavAudioRecorder(application)
     private val imports = ImportedAudioStore(application)
     private val player = PcmPlayer()
+    private var samplePlayer: MediaPlayer? = null
     private val baseVoice = BaseVoiceClient(application)
     private var previewJob: Job? = null
     private var generation = 0
     private val engine: VoiceCloneEngine = UnconfiguredMultilingualVoiceEngine()
     private var activeRecordingFile: File? = null
 
-    private val _state = MutableStateFlow(VoiceLabUiState(engineName = engine.engineName))
+    private val _state = MutableStateFlow(VoiceLabUiState(engineName = "Base voices + experimental English cloning; Urdu cloning pending"))
     val state: StateFlow<VoiceLabUiState> = _state.asStateFlow()
+
+    init {
+        val lastSample = File(application.filesDir, "voice_samples").listFiles()
+            ?.filter { it.extension == "wav" && it.length() > 44L }?.maxByOrNull { it.lastModified() }
+        if (lastSample != null) _state.update {
+            it.copy(sampleFile = lastSample, sampleName = lastSample.name, status = "Saved voice sample restored")
+        }
+    }
 
     fun startRecording() {
         val output = File(getApplication<Application>().filesDir, "voice_samples/recorded_${System.currentTimeMillis()}.wav")
@@ -86,7 +100,7 @@ class VoiceLabViewModel(application: Application) : AndroidViewModel(application
 
     fun importAudio(uri: Uri) {
         viewModelScope.launch {
-            runCatching { imports.copyIntoPrivateStorage(uri) }
+            runCatching { withContext(Dispatchers.IO) { imports.copyIntoPrivateStorage(uri) } }
                 .onSuccess { file ->
                     _state.update {
                         it.copy(sampleFile = file, sampleName = file.name, status = "Imported voice sample ready")
@@ -95,6 +109,39 @@ class VoiceLabViewModel(application: Application) : AndroidViewModel(application
                 .onFailure { error ->
                     _state.update { it.copy(status = error.message ?: "Import failed") }
                 }
+        }
+    }
+
+    fun setGender(gender: VoiceGender) = _state.update { it.copy(gender = gender) }
+
+    fun playSample() {
+        val sample = _state.value.sampleFile ?: return
+        if (_state.value.isBusy || _state.value.isRecording) return
+        stop()
+        runCatching {
+            val media = MediaPlayer()
+            samplePlayer = media
+            media.apply {
+                setDataSource(sample.absolutePath)
+                setOnCompletionListener {
+                    it.release()
+                    samplePlayer = null
+                    _state.update { state -> state.copy(isBusy = false, status = "Sample playback complete") }
+                }
+                setOnErrorListener { mp, _, _ ->
+                    mp.release()
+                    samplePlayer = null
+                    _state.update { state -> state.copy(isBusy = false, status = "Sample playback failed") }
+                    true
+                }
+                prepare()
+                start()
+            }
+            _state.update { it.copy(isBusy = true, status = "Playing your recorded sample") }
+        }.onFailure {
+            samplePlayer?.release()
+            samplePlayer = null
+            _state.update { state -> state.copy(isBusy = false, status = "Unable to play sample: ${it.message}") }
         }
     }
 
@@ -124,16 +171,19 @@ class VoiceLabViewModel(application: Application) : AndroidViewModel(application
         previewJob = viewModelScope.launch {
             _state.update { it.copy(isBusy = true, status = "Preparing base voice (not cloned)…") }
             runCatching {
-                val audio = baseVoice.synthesize(snapshot.text, snapshot.language)
-                if (generation == requestId) {
-                    // Playback errors must use the same error path as synthesis errors.
-                    player.play(audio.pcm16, audio.sampleRateHz)
+                val parts = SpeechTextPlanner.plan(snapshot.text, snapshot.language)
+                for ((index, part) in parts.withIndex()) {
+                    if (generation != requestId) throw CancellationException("Stopped")
+                    _state.update { it.copy(status = "Preparing speech ${index + 1}/${parts.size}…") }
+                    val audio = baseVoice.synthesize(part.text, part.language, snapshot.gender)
+                    if (generation != requestId) throw CancellationException("Stopped")
+                    _state.update { it.copy(status = "Reading ${index + 1}/${parts.size} — ${part.language.name}") }
+                    player.playAndWait(audio.pcm16, audio.sampleRateHz)
                 }
-                audio
             }
-                .onSuccess { _ ->
+                .onSuccess {
                     if (generation == requestId) {
-                        _state.update { it.copy(isBusy = false, status = "Playing base voice — not cloned") }
+                        _state.update { it.copy(isBusy = false, status = "Reading complete") }
                     }
                 }
                 .onFailure { error ->
@@ -152,43 +202,44 @@ class VoiceLabViewModel(application: Application) : AndroidViewModel(application
 
     fun speak() {
         val snapshot = _state.value
+        if (snapshot.isBusy || snapshot.isRecording) return
         val sample = snapshot.sampleFile
         if (sample == null) {
-            _state.update { it.copy(status = "Record or import a voice sample first") }
+            _state.update { it.copy(status = "پہلے اپنی آواز ریکارڈ یا امپورٹ کریں") }
             return
         }
-        if (snapshot.text.isBlank()) {
-            _state.update { it.copy(status = "Enter text to speak") }
+        val parts = runCatching { SpeechTextPlanner.plan(snapshot.text, snapshot.language) }.getOrElse { error ->
+            _state.update { it.copy(status = error.message ?: "Enter text") }
             return
         }
-
-        viewModelScope.launch {
-            _state.update { it.copy(isBusy = true, status = "Preparing local cloned speech…") }
-            runCatching {
-                engine.initialize()
-                engine.synthesize(
-                    SynthesisRequest(
-                        text = snapshot.text,
-                        language = snapshot.language,
-                        reference = VoiceReference(sample, snapshot.sampleName ?: "Voice sample"),
-                    )
-                )
-            }.onSuccess { result ->
-                player.play(result.pcm16, result.sampleRateHz)
-                _state.update { it.copy(isBusy = false, status = "Playing") }
-            }.onFailure { error ->
-                _state.update {
-                    it.copy(
-                        isBusy = false,
-                        status = error.message ?: "Voice synthesis failed",
-                    )
+        if (snapshot.language != ReplyLanguage.ENGLISH || parts.any { it.language != ReplyLanguage.ENGLISH }) {
+            _state.update { it.copy(status = "کلوننگ کا یہ تجربہ صرف انگلش کے لیے ہے۔ اردو کے لیے Base Voice استعمال کریں۔") }
+            return
+        }
+        val requestId = ++generation
+        previewJob = viewModelScope.launch {
+            _state.update { it.copy(isBusy = true, status = "Preparing experimental English clone…") }
+            try {
+                for ((index, part) in parts.withIndex()) {
+                    _state.update { it.copy(status = "Cloning ${index + 1}/${parts.size} — please wait…") }
+                    val audio = baseVoice.synthesize(part.text, part.language, reference = sample)
+                    if (generation != requestId) throw CancellationException("Stopped")
+                    _state.update { it.copy(status = "Playing experimental cloned speech") }
+                    player.playAndWait(audio.pcm16, audio.sampleRateHz)
                 }
+                if (generation == requestId) _state.update { it.copy(isBusy = false, status = "English clone test complete — check voice similarity") }
+            } catch (error: Throwable) {
+                if (error is CancellationException && error !is TimeoutCancellationException) throw error
+                Log.e("VoiceLab", "Cloning failed", error)
+                if (generation == requestId) _state.update { it.copy(isBusy = false, status = "Clone test failed: ${error.message}") }
             }
         }
     }
 
     fun stop() {
         generation++
+        samplePlayer?.release()
+        samplePlayer = null
         previewJob?.cancel()
         baseVoice.stop()
         if (_state.value.isRecording) {
@@ -201,6 +252,8 @@ class VoiceLabViewModel(application: Application) : AndroidViewModel(application
 
     override fun onCleared() {
         generation++
+        samplePlayer?.release()
+        samplePlayer = null
         baseVoice.stop()
         CoroutineScope(Dispatchers.IO).launch { baseVoice.release() }
         player.stop()

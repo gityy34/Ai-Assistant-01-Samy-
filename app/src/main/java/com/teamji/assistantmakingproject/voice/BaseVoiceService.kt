@@ -29,7 +29,15 @@ class BaseVoiceService : Service() {
                             val text = data.getString("text").orEmpty()
                             require(text.isNotBlank() && text.length <= 1000) { "Use 1–1000 characters" }
                             val language = ReplyLanguage.valueOf(data.getString("language").orEmpty())
-                            val audio = voice.synthesize(text, language)
+                            val gender = VoiceGender.valueOf(data.getString("gender") ?: "MALE")
+                            val referencePath = data.getString("reference")
+                            val audio = if (referencePath == null) voice.synthesize(text, language, gender) else {
+                                require(language == ReplyLanguage.ENGLISH) { "Urdu cloning is not available yet" }
+                                val reference = File(referencePath).canonicalFile
+                                val sampleDir = File(filesDir, "voice_samples").canonicalFile
+                                require(reference.parentFile == sampleDir && reference.isFile) { "Invalid voice sample" }
+                                PocketCloneVoice(this@BaseVoiceService).synthesize(text, reference)
+                            }
                             require(audio.pcm16.isNotEmpty()) { "Voice engine returned no audio" }
                             output = File(cacheDir, "tts-$id.pcm")
                             DataOutputStream(output.outputStream().buffered()).use { stream ->

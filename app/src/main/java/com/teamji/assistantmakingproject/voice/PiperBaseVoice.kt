@@ -17,15 +17,20 @@ class PiperBaseVoice(private val context: Context) {
     private val mutex = Mutex()
     private var tts: OfflineTts? = null
     private var loadedLanguage: ReplyLanguage? = null
+    private var loadedGender: VoiceGender? = null
     private val stopped = AtomicBoolean(false)
 
-    suspend fun synthesize(text: String, language: ReplyLanguage): SynthesisResult =
+    suspend fun synthesize(text: String, language: ReplyLanguage, gender: VoiceGender = VoiceGender.MALE): SynthesisResult =
         withContext(Dispatchers.IO) { mutex.withLock {
             require(text.isNotBlank()) { "Enter text to speak" }
             stopped.set(false)
-            val folder = if (language == ReplyLanguage.URDU)
-                "vits-piper-ur_PK-fasih-medium" else "vits-piper-en_US-lessac-medium"
-            if (loadedLanguage != language || tts == null) {
+            val folder = when {
+                language == ReplyLanguage.URDU && gender == VoiceGender.FEMALE -> "vits-piper-ur_PK-aegis_female-medium"
+                language == ReplyLanguage.URDU -> "vits-piper-ur_PK-fasih-medium"
+                gender == VoiceGender.FEMALE -> "vits-piper-en_US-hfc_female-medium-int8"
+                else -> "vits-piper-en_US-lessac-medium"
+            }
+            if (loadedLanguage != language || loadedGender != gender || tts == null) {
                 tts?.release()
                 tts = null
                 loadedLanguage = null
@@ -36,8 +41,8 @@ class PiperBaseVoice(private val context: Context) {
                     copyAssets("models/$folder", root)
                     // Marker is written only after every required resource is checked.
                 }
-                val model = if (language == ReplyLanguage.URDU)
-                    "ur_PK-fasih-medium.onnx" else "en_US-lessac-medium.onnx"
+                val model = root.listFiles().orEmpty().singleOrNull { it.extension == "onnx" }?.name
+                    ?: error("Expected one voice model")
                 check(File(root, model).isFile && File(root, "tokens.txt").isFile) {
                     "Base voice model is missing"
                 }
@@ -63,6 +68,7 @@ class PiperBaseVoice(private val context: Context) {
                     maxNumSentences = 1,
                 ))
                 loadedLanguage = language
+                loadedGender = gender
             }
             // JNI callback lookup is incompatible with Kotlin's invokedynamic lambdas.
             // Cancellation is handled by terminating the dedicated service process.

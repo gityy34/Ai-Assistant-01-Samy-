@@ -18,22 +18,23 @@ import kotlin.coroutines.resumeWithException
 /** Native TTS runs outside the UI process. Binder death becomes a recoverable error. */
 class BaseVoiceClient(private val context: Context) {
     private var remote: Messenger? = null
-    suspend fun synthesize(text: String, language: ReplyLanguage): SynthesisResult {
+    suspend fun synthesize(text: String, language: ReplyLanguage, gender: VoiceGender = VoiceGender.MALE, reference: File? = null): SynthesisResult {
         require(text.isNotBlank()) { "Enter text to speak" }
         require(text.length <= 1000) { "Please use up to 1000 characters per voice test" }
         val id = UUID.randomUUID().toString()
         val output = File(context.cacheDir, "tts-$id.pcm")
         try {
-            withTimeout(120_000) {
+            withTimeout(if (reference == null) 120_000L else 180_000L) {
                 withContext(Dispatchers.Main.immediate) {
                     suspendCancellableCoroutine<Unit> { continuation ->
                         var bound = false
                         var cleaned = false
+                        var requestRemote: Messenger? = null
                         lateinit var connection: ServiceConnection
                         fun cleanup() {
                             if (cleaned) return
                             cleaned = true
-                            remote = null
+                            if (remote === requestRemote) remote = null
                             if (bound) runCatching { context.unbindService(connection) }
                         }
                         fun fail(message: String) {
@@ -54,12 +55,15 @@ class BaseVoiceClient(private val context: Context) {
                             override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
                                 if (!continuation.isActive) { cleanup(); return }
                                 val messenger = Messenger(binder)
+                                requestRemote = messenger
                                 remote = messenger
                                 runCatching {
                                     messenger.send(Message.obtain(null, BaseVoiceService.SYNTHESIZE).apply {
                                         data = Bundle().apply {
                                             putString("text", text)
                                             putString("language", language.name)
+                                            putString("gender", gender.name)
+                                            putString("reference", reference?.absolutePath)
                                             putString("id", id)
                                         }
                                         replyTo = reply
@@ -82,7 +86,7 @@ class BaseVoiceClient(private val context: Context) {
                         if (!bound) fail("Voice worker could not be started")
                         continuation.invokeOnCancellation {
                             Handler(Looper.getMainLooper()).post {
-                                runCatching { remote?.send(Message.obtain(null, BaseVoiceService.STOP)) }
+                                runCatching { requestRemote?.send(Message.obtain(null, BaseVoiceService.STOP)) }
                                 cleanup()
                             }
                         }

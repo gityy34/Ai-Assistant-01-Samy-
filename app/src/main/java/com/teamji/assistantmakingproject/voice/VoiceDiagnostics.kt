@@ -13,12 +13,7 @@ object VoiceDiagnostics {
             val manager = context.getSystemService(ActivityManager::class.java)
             val exits = manager.getHistoricalProcessExitReasons(context.packageName, 0, 20)
                 .filter { it.processName.endsWith(":base_voice") }
-            val exit = exits.firstOrNull {
-                it.reason in listOf(android.app.ApplicationExitInfo.REASON_CRASH_NATIVE,
-                    android.app.ApplicationExitInfo.REASON_CRASH,
-                    android.app.ApplicationExitInfo.REASON_ANR,
-                    android.app.ApplicationExitInfo.REASON_LOW_MEMORY)
-            } ?: exits.firstOrNull()
+            val exit = exits.firstOrNull()
             if (exit == null) "No voice-worker exit record is available."
             else {
                 val summary = "Worker exit: reason=${exit.reason}, status=${exit.status}, time=${exit.timestamp}\n${exit.description}\n"
@@ -34,7 +29,10 @@ object VoiceDiagnostics {
                         String(buffer, 0, total, Charsets.UTF_8)
                     }.orEmpty()
                 }.getOrDefault("Native trace is unavailable.")
-                summary + trace
+                val note = if (exit.reason == android.app.ApplicationExitInfo.REASON_SIGNALED && exit.status == 9)
+                    "Signal 9 may be the expected voice-worker shutdown after completion or Stop; it alone does not prove an app crash.\n"
+                    else "Historical worker exit; compare with the current voice status.\n"
+                note + summary + trace
             }
         }.getOrElse { "Unable to read voice diagnostics: ${it.message}" }
     }
