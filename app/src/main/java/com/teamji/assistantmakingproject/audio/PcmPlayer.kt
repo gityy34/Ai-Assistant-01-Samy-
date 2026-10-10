@@ -5,6 +5,7 @@ import android.media.AudioFormat
 import android.media.AudioTrack
 
 class PcmPlayer {
+    var speed: Float = 1f
     suspend fun playAndWait(samples: ShortArray, sampleRateHz: Int) {
         play(samples, sampleRateHz)
         val active = checkNotNull(track)
@@ -55,6 +56,7 @@ class PcmPlayer {
             val written = audioTrack.write(samples, 0, samples.size)
             check(written == samples.size) { "Audio output accepted only $written of ${samples.size} samples" }
             check(audioTrack.state == AudioTrack.STATE_INITIALIZED) { "Audio output buffer was not prepared" }
+            audioTrack.playbackParams = android.media.PlaybackParams().setSpeed(speed).setPitch(1f)
             audioTrack.play()
         } catch (error: Throwable) {
             stop()

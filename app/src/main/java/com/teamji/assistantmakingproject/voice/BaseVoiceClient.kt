@@ -17,7 +17,52 @@ import kotlin.coroutines.resumeWithException
 
 /** Native TTS runs outside the UI process. Binder death becomes a recoverable error. */
 class BaseVoiceClient(private val context: Context) {
+    var lastWorkerPid: Int = 0
+        private set
     private var remote: Messenger? = null
+    private var sessionRemote: Messenger? = null
+    private val sessionMutex = kotlinx.coroutines.sync.Mutex()
+
+    /** A keeper binding preserves loaded native models for a whole reading session. */
+    suspend fun <T> withSession(block: suspend () -> T): T {
+        sessionMutex.lock()
+        try {
+            return withContext(Dispatchers.Main.immediate) {
+                var bound = false
+                var messenger: Messenger? = null
+                lateinit var connection: ServiceConnection
+                try {
+                    withTimeout(15_000) {
+                        suspendCancellableCoroutine<Unit> { continuation ->
+                            connection = object : ServiceConnection {
+                                override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
+                                    if (continuation.isActive) {
+                                        messenger = Messenger(binder)
+                                        sessionRemote = messenger
+                                        continuation.resume(Unit)
+                                    }
+                                }
+                                override fun onServiceDisconnected(name: ComponentName?) {
+                                    if (sessionRemote === messenger) sessionRemote = null
+                                    if (continuation.isActive) continuation.resumeWithException(IllegalStateException("Voice worker disconnected"))
+                                }
+                                override fun onNullBinding(name: ComponentName?) {
+                                    if (continuation.isActive) continuation.resumeWithException(IllegalStateException("Voice worker unavailable"))
+                                }
+                            }
+                            bound = context.bindService(Intent(context, BaseVoiceService::class.java), connection, Context.BIND_AUTO_CREATE)
+                            if (!bound && continuation.isActive) continuation.resumeWithException(IllegalStateException("Voice worker could not start"))
+                        }
+                    }
+                    block()
+                } finally {
+                    if (sessionRemote === messenger) sessionRemote = null
+                    if (bound) runCatching { context.unbindService(connection) }
+                }
+            }
+        } finally { sessionMutex.unlock() }
+    }
+
     suspend fun synthesize(text: String, language: ReplyLanguage, gender: VoiceGender = VoiceGender.MALE, reference: File? = null): SynthesisResult {
         require(text.isNotBlank()) { "Enter text to speak" }
         require(text.length <= 1000) { "Please use up to 1000 characters per voice test" }
@@ -44,6 +89,7 @@ class BaseVoiceClient(private val context: Context) {
                         }
                         val reply = Messenger(Handler(Looper.getMainLooper()) { message ->
                             if (message.what == BaseVoiceService.SUCCESS) {
+                                lastWorkerPid = message.data.getInt("workerPid")
                                 cleanup()
                                 if (continuation.isActive) continuation.resume(Unit)
                             } else {
@@ -107,7 +153,7 @@ class BaseVoiceClient(private val context: Context) {
         }
     }
     fun stop() {
-        runCatching { remote?.send(Message.obtain(null, BaseVoiceService.STOP)) }
+        runCatching { (remote ?: sessionRemote)?.send(Message.obtain(null, BaseVoiceService.STOP)) }
     }
     suspend fun release() { stop() }
 }

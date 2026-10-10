@@ -1,27 +1,21 @@
-# Voice runtime: 0.1.3 preview
+# 0.1.4 buffered reading
+User testing of 0.1.3 showed multi-second pauses and poor perceived clone similarity/Urdu pronunciation. Earlier automated tests only proved non-silent output; this was not speaker identity verification.
 
-Base voices: Urdu male Fasih, Urdu female Aegis (MIT, Muhammad Mahwiz Khalil / Proxima AI), English male Lessac, English female HFC Female. English female uses the upstream int8 pack. Model assets and licenses are bundled; speech does not require an account or network access.
+## Implemented
+- A keeper binding keeps the native worker and model loaded throughout a reading session.
+- Same-script sentences stay together in chunks up to 400 characters instead of restarting after every sentence.
+- Two chunks are buffered before playback. The producer then prepares subsequent chunks during playback.
+- Stop kills the dedicated worker and cancels producer and playback together.
+- Playback speed controls: 0.85, 1.0, 1.2, 1.4; pitch is held at 1.
+- Base voice names are shown per language: Urdu Fasih/Aegis; English Lessac/HFC Female. There are two base voices per language, four total.
+- Sample replay and replay of the last generated segment support human A/B listening.
+- Clone model is retained for a session, reference embedding can be reused, and references are checked for silence/clipping, trimmed at their outer silence and gain normalized without altering pitch.
+- English reference-conditioned generation uses 10 diffusion steps and a fixed seed for reproducible reference A/B comparisons. This is still experimental; no default female voice is intentionally substituted.
 
-Speech is cleaned of decorative symbols and split into bounded script-aware parts. Urdu and Latin script runs use their respective language models without translation. Urdu pronunciation quality still depends on the eSpeak Urdu phonemizer and voice model; this update does not claim native-perfect pronunciation. Roman Urdu cannot be reliably detected from Latin letters.
+## Tests
+Queue tests must prove lookahead and overlapped preparation. Device test must prove the worker PID remains the same between chunks. Clone tests must show that changing male/female references with a fixed seed changes output and the same reference remains repeatable. These are conditioning tests, not a perceptual similarity score or pronunciation assessment.
 
-Playback stays busy until the PCM finishes. Stop cancels pending parts and releases playback; native generation is isolated in a service process. Signal 9 after worker teardown is labeled separately from a confirmed native crash.
-
-Recordings can be replayed and exported to WAV. The newest saved WAV is restored after app relaunch. Base voices do not consume recorded references.
-
-## Cloning work
-Experimental English Pocket TTS cloning is integrated into the isolated worker using generateWithConfig without JNI callbacks. It consumes a real 3–15 second mono 16 kHz PCM reference; 8–12 seconds of clean English speech is recommended. It rejects Urdu rather than claiming multilingual support. Tests verify non-silent audio generation, not perceptual voice identity or OPPO performance.
-
-Pinned ONNX model pack:
-https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/sherpa-onnx-pocket-tts-int8-2026-01-26.tar.bz2
-SHA256: 2f3b88823cbbb9bf0b2477ec8ae7b3fec417b3a87b6bb5f256dba66f2ad967cb
-
-Urdu cloning investigation: OmniVoice is a candidate (600+ languages, 0.6B parameters, CC-BY-NC weights); current upstream example uses Python/PyTorch, not this Android sherpa runtime. Before inclusion, establish a compatible mobile inference/export path, peak memory, latency, reference similarity and native Urdu pronunciation on OPPO CPH2603. No Urdu cloning model or AI chat is claimed complete.
-
-Sources:
-- https://k2-fsa.github.io/sherpa/onnx/tts/pocket.html
-- https://github.com/k2-fsa/sherpa-onnx/blob/v1.13.8/sherpa-onnx/kotlin-api/Tts.kt
-- https://huggingface.co/mahwizzzz/piper-voice-ur-aegis-female
-- https://huggingface.co/k2-fsa/OmniVoice
-
-## Acceptance
-CI must pass all unit tests, all four base voices, playback completion/Stop, worker recovery, and real reference-conditioned English synthesis. Human phone testing must confirm speaker output, long text completion, responsiveness, male/female voice differences, pronunciation, and clone similarity. A waveform existing is not sufficient to assert quality.
+## Limits / next milestone
+Piper/eSpeak Urdu pronunciation remains insufficient according to the user's phone test. Buffering and speed controls do not repair the phonemizer or make pronunciation native-quality. A replacement Urdu backend needs native Urdu listening tests before it can be accepted.
+The same-reference voice identity on OPPO CPH2603 still needs a clean user recording and listening comparison. If buffering underruns on the phone, preparation throughput must be measured there; no universal zero-gap claim is made.
+Urdu cloning and AI question answering remain incomplete. Keep the app offline; do not silently send references or text to a cloud service.

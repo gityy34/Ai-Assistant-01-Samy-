@@ -26,11 +26,14 @@ import java.io.File
 import android.media.MediaPlayer
 import com.teamji.assistantmakingproject.voice.VoiceGender
 import com.teamji.assistantmakingproject.voice.SpeechTextPlanner
+import com.teamji.assistantmakingproject.voice.SpeechQueue
 
 
 data class VoiceLabUiState(
     val isRecording: Boolean = false,
     val gender: VoiceGender = VoiceGender.MALE,
+    val speed: Float = 1f,
+    val resultLabel: String? = null,
     val sampleName: String? = null,
     val sampleFile: File? = null,
     val text: String = "السلام علیکم۔ یہ بنیادی آواز کا ٹیسٹ ہے۔",
@@ -45,6 +48,7 @@ class VoiceLabViewModel(application: Application) : AndroidViewModel(application
     private val imports = ImportedAudioStore(application)
     private val player = PcmPlayer()
     private var samplePlayer: MediaPlayer? = null
+    private var lastOutput: com.teamji.assistantmakingproject.voice.SynthesisResult? = null
     private val baseVoice = BaseVoiceClient(application)
     private var previewJob: Job? = null
     private var generation = 0
@@ -107,6 +111,8 @@ class VoiceLabViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    fun setSpeed(speed: Float) { if (!_state.value.isBusy) _state.update { it.copy(speed = speed.coerceIn(0.85f, 1.4f)) } }
+
     fun setGender(gender: VoiceGender) = _state.update { it.copy(gender = gender) }
 
     fun playSample() {
@@ -140,6 +146,23 @@ class VoiceLabViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    fun playLastResult() {
+        val audio = lastOutput ?: return
+        if (_state.value.isBusy || _state.value.isRecording) return
+        val requestId = ++generation
+        previewJob = viewModelScope.launch {
+            _state.update { it.copy(isBusy = true, status = "Playing last generated segment") }
+            try {
+                player.speed = _state.value.speed
+                player.playAndWait(audio.pcm16, audio.sampleRateHz)
+                if (generation == requestId) _state.update { it.copy(isBusy = false, status = "Playback complete") }
+            } catch (error: Throwable) {
+                if (error is CancellationException) throw error
+                if (generation == requestId) _state.update { it.copy(isBusy = false, status = "Playback failed: ${error.message}") }
+            }
+        }
+    }
+
     fun updateText(value: String) = _state.update { it.copy(text = value) }
 
     fun setLanguage(language: ReplyLanguage) {
@@ -167,13 +190,18 @@ class VoiceLabViewModel(application: Application) : AndroidViewModel(application
             _state.update { it.copy(isBusy = true, status = "Preparing base voice (not cloned)…") }
             runCatching {
                 val parts = SpeechTextPlanner.plan(snapshot.text, snapshot.language)
-                for ((index, part) in parts.withIndex()) {
-                    if (generation != requestId) throw CancellationException("Stopped")
-                    _state.update { it.copy(status = "Preparing speech ${index + 1}/${parts.size}…") }
-                    val audio = baseVoice.synthesize(part.text, part.language, snapshot.gender)
-                    if (generation != requestId) throw CancellationException("Stopped")
-                    _state.update { it.copy(status = "Reading ${index + 1}/${parts.size} — ${part.language.name}") }
-                    player.playAndWait(audio.pcm16, audio.sampleRateHz)
+                player.speed = snapshot.speed
+                baseVoice.withSession {
+                    SpeechQueue.play(parts, prepare = { index, part ->
+                        if (generation != requestId) throw CancellationException("Stopped")
+                        if (index < 2) _state.update { it.copy(status = "Buffering speech ${index + 1}/${minOf(2, parts.size)}…") }
+                        baseVoice.synthesize(part.text, part.language, snapshot.gender)
+                    }, consume = { index, audio ->
+                        if (generation != requestId) throw CancellationException("Stopped")
+                        lastOutput = audio
+                        _state.update { it.copy(resultLabel = "Base Voice — ${snapshot.gender.name}", status = "Reading ${index + 1}/${parts.size} — ${snapshot.gender.name}, ${snapshot.speed}x") }
+                        player.playAndWait(audio.pcm16, audio.sampleRateHz)
+                    })
                 }
             }
                 .onSuccess {
@@ -215,14 +243,20 @@ class VoiceLabViewModel(application: Application) : AndroidViewModel(application
         previewJob = viewModelScope.launch {
             _state.update { it.copy(isBusy = true, status = "Preparing experimental English clone…") }
             try {
-                for ((index, part) in parts.withIndex()) {
-                    _state.update { it.copy(status = "Cloning ${index + 1}/${parts.size} — please wait…") }
-                    val audio = baseVoice.synthesize(part.text, part.language, reference = sample)
-                    if (generation != requestId) throw CancellationException("Stopped")
-                    _state.update { it.copy(status = "Playing experimental cloned speech") }
-                    player.playAndWait(audio.pcm16, audio.sampleRateHz)
+                player.speed = snapshot.speed
+                baseVoice.withSession {
+                    SpeechQueue.play(parts, prepare = { index, part ->
+                        if (generation != requestId) throw CancellationException("Stopped")
+                        if (index < 2) _state.update { it.copy(status = "Buffering experimental clone — sample: ${sample.name}") }
+                        baseVoice.synthesize(part.text, part.language, reference = sample)
+                    }, consume = { index, audio ->
+                        if (generation != requestId) throw CancellationException("Stopped")
+                        lastOutput = audio
+                        _state.update { it.copy(resultLabel = "Reference test — ${sample.name}", status = "Reference-conditioned test ${index + 1}/${parts.size} — verify similarity") }
+                        player.playAndWait(audio.pcm16, audio.sampleRateHz)
+                    })
                 }
-                if (generation == requestId) _state.update { it.copy(isBusy = false, status = "English clone test complete — check voice similarity") }
+                if (generation == requestId) _state.update { it.copy(isBusy = false, status = "آواز کا تجربہ مکمل — ریکارڈنگ اور نتیجہ سن کر مشابہت چیک کریں") }
             } catch (error: Throwable) {
                 if (error is CancellationException && error !is TimeoutCancellationException) throw error
                 Log.e("VoiceLab", "Cloning failed", error)

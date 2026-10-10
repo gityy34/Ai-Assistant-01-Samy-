@@ -76,30 +76,65 @@ class BaseVoiceDeviceTest {
         }
     }
 
-    @Test fun englishCloneUsesReferenceAndProducesSpeech() = runBlocking {
+
+    @Test fun sessionKeepsTheSameWorkerForSuccessiveChunks() = runBlocking {
+        val client = BaseVoiceClient(InstrumentationRegistry.getInstrumentation().targetContext)
+        client.withSession {
+            client.synthesize("Hello. This is the first part.", ReplyLanguage.ENGLISH)
+            val firstPid = client.lastWorkerPid
+            client.synthesize("This is the second part.", ReplyLanguage.ENGLISH)
+            assertTrue(firstPid > 0)
+            assertEquals("Worker must not restart between parts", firstPid, client.lastWorkerPid)
+        }
+    }
+
+    @Test fun englishCloneChangesWithMaleAndFemaleReferences() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val reference = File(context.filesDir, "voice_samples/clone-test.wav")
-        reference.parentFile!!.mkdirs()
-        // A bundled spoken reference exercises the native clone path without user data.
-        val path = "models/sherpa-onnx-pocket-tts-int8-2026-01-26/test_wavs/bria.wav"
-        context.assets.open(path).use { input -> reference.outputStream().use { input.copyTo(it) } }
+        val client = BaseVoiceClient(context)
+        val dir = File(context.filesDir, "voice_samples").apply { mkdirs() }
+        val female = File(dir, "clone-female-test.wav")
+        val male = File(dir, "clone-male-test.wav")
+        val fixture = File(context.cacheDir, "clone-fixture.wav")
         try {
-            // Fixture may be 24 kHz. Convert with the native reader to the app's 16 kHz PCM reference format.
-            val wave = com.k2fsa.sherpa.onnx.WaveReader.readWave(reference.absolutePath)
-            val count = minOf(160_000L, wave.samples.size.toLong() * 16_000 / wave.sampleRate).toInt()
-            val pcm = ShortArray(count) { i ->
-                val source = (i.toLong() * wave.sampleRate / 16_000).toInt().coerceAtMost(wave.samples.lastIndex)
-                (wave.samples[source].coerceIn(-1f, 1f) * 32767).toInt().toShort()
+            context.assets.open("models/sherpa-onnx-pocket-tts-int8-2026-01-26/test_wavs/bria.wav").use { input ->
+                fixture.outputStream().use { input.copyTo(it) }
             }
-            val bytes = ByteBuffer.allocate(44 + pcm.size * 2).order(ByteOrder.LITTLE_ENDIAN)
-            bytes.put("RIFF".toByteArray()).putInt(36 + pcm.size * 2).put("WAVEfmt ".toByteArray())
-            bytes.putInt(16).putShort(1.toShort()).putShort(1.toShort()).putInt(16_000).putInt(32_000)
-            bytes.putShort(2.toShort()).putShort(16.toShort()).put("data".toByteArray()).putInt(pcm.size * 2)
-            pcm.forEach { bytes.putShort(it) }
-            reference.writeBytes(bytes.array())
-            val audio = BaseVoiceClient(context).synthesize("Hello. This is my voice test.", ReplyLanguage.ENGLISH, reference = reference)
-            assertTrue(audio.pcm16.size > audio.sampleRateHz / 4)
-            assertTrue(audio.pcm16.any { kotlin.math.abs(it.toInt()) > 100 })
-        } finally { reference.delete() }
+            val wave = com.k2fsa.sherpa.onnx.WaveReader.readWave(fixture.absolutePath)
+            writeReference(female, wave.samples, wave.sampleRate)
+            val maleAudio = client.synthesize(
+                "Hello, my name is James. I am speaking clearly and calmly for this voice recording.",
+                ReplyLanguage.ENGLISH, VoiceGender.MALE)
+            writeReference(male, FloatArray(maleAudio.pcm16.size) { maleAudio.pcm16[it] / 32768f }, maleAudio.sampleRateHz)
+            client.withSession {
+                val text = "Hello. This is my voice test."
+                val a = client.synthesize(text, ReplyLanguage.ENGLISH, reference = female)
+                val b = client.synthesize(text, ReplyLanguage.ENGLISH, reference = male)
+                val repeat = client.synthesize(text, ReplyLanguage.ENGLISH, reference = male)
+                for (audio in listOf(a, b, repeat)) {
+                    assertTrue(audio.pcm16.size > audio.sampleRateHz / 4)
+                    assertTrue(audio.pcm16.any { kotlin.math.abs(it.toInt()) > 100 })
+                }
+                val common = minOf(a.pcm16.size, b.pcm16.size)
+                val difference = (0 until common).sumOf { kotlin.math.abs(a.pcm16[it].toInt() - b.pcm16[it].toInt()).toDouble() } / common
+                assertTrue("Changing the reference with a fixed seed must change generated speech", difference > 100.0)
+                assertEquals("Fixed-seed generation with the same reference must be repeatable", b.pcm16.size, repeat.pcm16.size)
+                val repeatedDifference = b.pcm16.indices.sumOf { kotlin.math.abs(b.pcm16[it].toInt() - repeat.pcm16[it].toInt()).toDouble() } / b.pcm16.size
+                assertTrue("Reference conditioning must be stable", repeatedDifference < 100.0)
+            }
+        } finally { female.delete(); male.delete(); fixture.delete() }
+    }
+
+    private fun writeReference(file: File, samples: FloatArray, rate: Int) {
+        val count = minOf(160_000L, samples.size.toLong() * 16_000 / rate).toInt()
+        val pcm = ShortArray(count) { i ->
+            val source = (i.toLong() * rate / 16_000).toInt().coerceAtMost(samples.lastIndex)
+            (samples[source].coerceIn(-1f, 1f) * 32767).toInt().toShort()
+        }
+        val bytes = ByteBuffer.allocate(44 + pcm.size * 2).order(ByteOrder.LITTLE_ENDIAN)
+        bytes.put("RIFF".toByteArray()).putInt(36 + pcm.size * 2).put("WAVEfmt ".toByteArray())
+        bytes.putInt(16).putShort(1.toShort()).putShort(1.toShort()).putInt(16_000).putInt(32_000)
+        bytes.putShort(2.toShort()).putShort(16.toShort()).put("data".toByteArray()).putInt(pcm.size * 2)
+        pcm.forEach { bytes.putShort(it) }
+        file.writeBytes(bytes.array())
     }
 }

@@ -157,10 +157,18 @@ private fun VoiceLabScreen(vm: VoiceLabViewModel = viewModel()) {
             )
         }
 
-        Text("آواز / Voice")
+        Text("بنیادی آواز — ہر زبان میں دو انتخاب")
+        Text(if (state.language == ReplyLanguage.URDU) "اردو: Fasih (مرد)، Aegis (عورت)" else "English: Lessac (Male), HFC Female (Female)")
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FilterChip(selected = state.gender == VoiceGender.MALE, onClick = { vm.setGender(VoiceGender.MALE) }, enabled = !state.isBusy, label = { Text("مرد / Male") })
             FilterChip(selected = state.gender == VoiceGender.FEMALE, onClick = { vm.setGender(VoiceGender.FEMALE) }, enabled = !state.isBusy, label = { Text("عورت / Female") })
+        }
+        Text("رفتار / Speed")
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            listOf(0.85f, 1f, 1.2f, 1.4f).forEach { speed ->
+                FilterChip(selected = state.speed == speed, onClick = { vm.setSpeed(speed) },
+                    enabled = !state.isBusy, label = { Text("${speed}x") })
+            }
         }
         Text("ملے ہوئے متن میں اردو اور انگلش کے حصے اپنی زبان کی آواز میں پڑھے جائیں گے۔")
 
@@ -174,7 +182,7 @@ private fun VoiceLabScreen(vm: VoiceLabViewModel = viewModel()) {
 
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Button(onClick = vm::speak, enabled = !state.isBusy && !state.isRecording) {
-                Text("Clone Voice (English test)")
+                Text("اپنے نمونے سے انگلش آواز — تجربہ")
             }
             Button(onClick = vm::stop) {
                 Text("Stop")
@@ -184,6 +192,13 @@ private fun VoiceLabScreen(vm: VoiceLabViewModel = viewModel()) {
         Button(onClick = vm::previewBaseVoice, enabled = !state.isBusy && !state.isRecording) {
             Text("بنیادی آواز کا ٹیسٹ / Base voice")
         }
+        state.resultLabel?.let { label ->
+            Text("آخری تیار شدہ حصے کا ماخذ: $label")
+            Button(onClick = vm::playLastResult, enabled = !state.isBusy && !state.isRecording) {
+                Text("تیار شدہ آخری حصہ دوبارہ سنیں")
+            }
+        }
+        Text("کلوننگ کا تجربہ اپنی ریکارڈنگ استعمال کرتا ہے؛ مرد/عورت کا انتخاب صرف Base Voice کے لیے ہے۔ مشابہت ابھی تصدیق طلب ہے۔")
         Text("Urdu: Fasih / Aegis. English: Lessac / HFC Female. Base voices do not use your recording. English cloning is a separate experimental test.")
         Button(enabled = !state.isBusy, onClick = {
             scope.launch {

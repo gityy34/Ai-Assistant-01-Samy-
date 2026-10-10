@@ -11,6 +11,7 @@ class BaseVoiceService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val voice by lazy { PiperBaseVoice(this) }
     private var busy = false
+    private val clone by lazy { PocketCloneVoice(this) }
     private val messenger = Messenger(Handler(Looper.getMainLooper()) { request ->
         when (request.what) {
             STOP -> { android.os.Process.killProcess(android.os.Process.myPid()); true }
@@ -36,7 +37,7 @@ class BaseVoiceService : Service() {
                                 val reference = File(referencePath).canonicalFile
                                 val sampleDir = File(filesDir, "voice_samples").canonicalFile
                                 require(reference.parentFile == sampleDir && reference.isFile) { "Invalid voice sample" }
-                                PocketCloneVoice(this@BaseVoiceService).synthesize(text, reference)
+                                clone.synthesize(text, reference)
                             }
                             require(audio.pcm16.isNotEmpty()) { "Voice engine returned no audio" }
                             output = File(cacheDir, "tts-$id.pcm")
@@ -45,13 +46,14 @@ class BaseVoiceService : Service() {
                                 stream.writeInt(audio.pcm16.size)
                                 audio.pcm16.forEach { stream.writeShort(it.toInt()) }
                             }
-                            reply.send(Message.obtain(null, SUCCESS))
+                            withContext(Dispatchers.Main) { busy = false; reply.send(Message.obtain(null, SUCCESS).apply { data = Bundle().apply { putInt("workerPid", android.os.Process.myPid()) } }) }
                         } catch (error: Throwable) {
                             output?.delete()
                             android.util.Log.e("BaseVoiceWorker", "Synthesis failed", error)
-                            sendError(reply, "${error.javaClass.simpleName}: ${error.message}")
-                        } finally {
-                            withContext(Dispatchers.Main) { busy = false }
+                            withContext(Dispatchers.Main) {
+                                busy = false
+                                sendError(reply, "${error.javaClass.simpleName}: ${error.message}")
+                            }
                         }
                     }
                 }

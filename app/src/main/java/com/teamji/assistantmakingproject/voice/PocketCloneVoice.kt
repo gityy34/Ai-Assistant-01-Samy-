@@ -9,6 +9,7 @@ import kotlinx.coroutines.withContext
 
 /** Experimental English cloning. Urdu is rejected instead of being sent to an English model. */
 class PocketCloneVoice(private val context: Context) {
+    private var loaded: OfflineTts? = null
     suspend fun synthesize(text: String, reference: File): SynthesisResult = withContext(Dispatchers.IO) {
         val format = WavFileInspector.requireCloneReferenceFormat(reference)
         val seconds = format.dataBytes.toDouble() / 32_000
@@ -31,7 +32,7 @@ class PocketCloneVoice(private val context: Context) {
             }
         }
         fun path(name: String) = File(root, name).absolutePath
-        val tts = OfflineTts(config = OfflineTtsConfig(
+        val tts = loaded ?: OfflineTts(config = OfflineTtsConfig(
             model = OfflineTtsModelConfig(
                 pocket = OfflineTtsPocketModelConfig(
                     lmFlow = path(files[0]), lmMain = path(files[1]), encoder = path(files[2]),
@@ -40,20 +41,22 @@ class PocketCloneVoice(private val context: Context) {
                     voiceEmbeddingCacheCapacity = 1,
                 ), numThreads = 2, provider = "cpu",
             )
-        ))
-        try {
+        )).also { loaded = it }
+        run {
             val wave = WaveReader.readWave(reference.absolutePath)
             require(wave.samples.isNotEmpty() && wave.samples.any { kotlin.math.abs(it) > 0.01f }) {
                 "Recording is silent; record your voice again"
             }
+            val referenceAudio = CloneReferenceAudio.prepare(wave.samples, wave.sampleRate)
             val audio = tts.generateWithConfig(text, GenerationConfig(
-                referenceAudio = wave.samples, referenceSampleRate = wave.sampleRate,
-                numSteps = 5,
+                referenceAudio = referenceAudio, referenceSampleRate = wave.sampleRate,
+                numSteps = 10,
+                extra = mapOf("seed" to "42", "temperature" to "0.6", "max_reference_audio_len" to "15"),
             ))
             require(audio.samples.isNotEmpty()) { "Clone model returned no speech" }
             SynthesisResult(ShortArray(audio.samples.size) {
                 (audio.samples[it].coerceIn(-1f, 1f) * 32767f).toInt().toShort()
             }, audio.sampleRate)
-        } finally { tts.release() }
+        }
     }
 }

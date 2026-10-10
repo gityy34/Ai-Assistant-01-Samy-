@@ -13,12 +13,15 @@ class SpeechTextPlannerTest {
         val text = "پاکستان ".repeat(400).trim()
         val parts = SpeechTextPlanner.plan(text, ReplyLanguage.URDU)
         assertTrue(parts.size > 1)
-        assertTrue(parts.all { it.text.length <= 220 })
+        assertTrue(parts.all { it.text.length <= 400 })
         assertEquals(text, parts.joinToString(" ") { it.text })
     }
     @Test fun emojiAreRemovedAndUrduPunctuationPreserved() {
         val parts = SpeechTextPlanner.plan("🌿 السلام علیکم۔ 🤲", ReplyLanguage.URDU)
         assertEquals("السلام علیکم۔", parts.single().text)
+    }
+    @Test fun adjacentSentencesAreKeptTogetherForNaturalReading() {
+        assertEquals("Hello. This is a test. Please continue.", SpeechTextPlanner.plan("Hello. This is a test. Please continue.", ReplyLanguage.ENGLISH).single().text)
     }
     @Test fun pureEnglishUsesEnglishEvenWithUrduPreference() {
         assertEquals(ReplyLanguage.ENGLISH, SpeechTextPlanner.plan("Hello", ReplyLanguage.URDU).single().language)

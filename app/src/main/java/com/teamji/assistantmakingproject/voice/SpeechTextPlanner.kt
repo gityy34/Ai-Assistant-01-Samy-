@@ -21,7 +21,7 @@ object SpeechTextPlanner {
         fun flush() {
             var remaining = run.toString().trim()
             while (remaining.isNotEmpty()) {
-                var end = minOf(remaining.length, 220)
+                var end = minOf(remaining.length, 400)
                 if (end < remaining.length) {
                     val boundary = remaining.lastIndexOf(' ', end)
                     if (boundary > 0) end = boundary
@@ -40,7 +40,6 @@ object SpeechTextPlanner {
             }
             if (detected != null && detected != language) { flush(); language = detected }
             run.append(ch)
-            if (ch in ".!?۔؟\n") flush()
         }
         flush()
         return result
