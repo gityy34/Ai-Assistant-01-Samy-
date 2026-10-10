@@ -19,6 +19,11 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+      - name: Keep debug updates signed with the same test key
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: demo1-debug-signing-windows-v1
       - name: Install required Android SDK packages
         shell: pwsh
         run: |

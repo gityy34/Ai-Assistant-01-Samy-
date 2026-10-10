@@ -19,6 +19,7 @@ import kotlinx.coroutines.Dispatchers
 import com.teamji.assistantmakingproject.voice.BaseVoiceClient
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -31,7 +32,7 @@ data class VoiceLabUiState(
     val isRecording: Boolean = false,
     val sampleName: String? = null,
     val sampleFile: File? = null,
-    val text: String = "السلام علیکم۔ یہ میری مقامی کلون آواز کا ٹیسٹ ہے۔",
+    val text: String = "السلام علیکم۔ یہ بنیادی آواز کا ٹیسٹ ہے۔",
     val language: ReplyLanguage = LanguagePolicy.defaultLanguage,
     val status: String = "No voice sample loaded",
     val isBusy: Boolean = false,
@@ -102,11 +103,17 @@ class VoiceLabViewModel(application: Application) : AndroidViewModel(application
     fun setLanguage(language: ReplyLanguage) {
         _state.update {
             val suggested = if (language == ReplyLanguage.URDU) {
-                "السلام علیکم۔ یہ میری مقامی کلون آواز کا ٹیسٹ ہے۔"
+                "السلام علیکم۔ یہ بنیادی آواز کا ٹیسٹ ہے۔"
             } else {
-                "Hello. This is a local test of my cloned voice."
+                "Hello. This is an offline base voice test."
             }
-            it.copy(language = language, text = suggested)
+            val defaults = setOf(
+                "السلام علیکم۔ یہ بنیادی آواز کا ٹیسٹ ہے۔",
+                "Hello. This is an offline base voice test.",
+                "السلام علیکم۔ یہ میری مقامی کلون آواز کا ٹیسٹ ہے۔",
+                "Hello. This is a local test of my cloned voice.",
+            )
+            it.copy(language = language, text = if (it.text.isBlank() || it.text in defaults) suggested else it.text)
         }
     }
 
@@ -130,7 +137,7 @@ class VoiceLabViewModel(application: Application) : AndroidViewModel(application
                     }
                 }
                 .onFailure { error ->
-                    if (error is CancellationException) throw error
+                    if (error is CancellationException && error !is TimeoutCancellationException) throw error
                     Log.e("VoiceLab", "Base voice synthesis/playback failed", error)
                     if (generation == requestId)
                         _state.update {

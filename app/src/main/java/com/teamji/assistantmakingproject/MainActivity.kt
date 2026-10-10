@@ -1,6 +1,10 @@
 package com.teamji.assistantmakingproject
 
 import android.Manifest
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.widget.Toast
 import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -23,6 +27,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -32,6 +37,10 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.teamji.assistantmakingproject.ui.VoiceLabViewModel
 import com.teamji.assistantmakingproject.voice.ReplyLanguage
+import com.teamji.assistantmakingproject.voice.VoiceDiagnostics
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -50,6 +59,7 @@ class MainActivity : ComponentActivity() {
 private fun VoiceLabScreen(vm: VoiceLabViewModel = viewModel()) {
     val state by vm.state.collectAsState()
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
 
     val recordPermission = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -133,7 +143,7 @@ private fun VoiceLabScreen(vm: VoiceLabViewModel = viewModel()) {
 
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Button(onClick = vm::speak, enabled = !state.isBusy) {
-                Text("Clone Voice")
+                Text("Clone Voice (pending)")
             }
             Button(onClick = vm::stop) {
                 Text("Stop")
@@ -144,6 +154,16 @@ private fun VoiceLabScreen(vm: VoiceLabViewModel = viewModel()) {
             Text("بنیادی آواز کا ٹیسٹ / Base voice")
         }
         Text("Base voice uses Fasih / Lessac. Your recorded voice is not used for this test.")
+        Button(enabled = !state.isBusy, onClick = {
+            scope.launch {
+                val diagnostics = withContext(Dispatchers.IO) { VoiceDiagnostics.collect(context) }
+                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                clipboard.setPrimaryClip(ClipData.newPlainText("Voice diagnostics", diagnostics + "\nStatus: " + state.status))
+                Toast.makeText(context, "Voice diagnostics copied", Toast.LENGTH_SHORT).show()
+            }
+        }) {
+            Text("خرابی کی تفصیل کاپی کریں / Copy diagnostics")
+        }
 
         Text(
             "Privacy: voice samples are copied to app-private storage. " +

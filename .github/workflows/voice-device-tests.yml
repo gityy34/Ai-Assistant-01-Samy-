@@ -43,7 +43,7 @@ jobs:
         if: always()
         run: |
           mkdir -p verification
-          adb logcat -d > verification/emulator-logcat.txt || true
+          timeout 10s adb logcat -d > verification/post-emulator-logcat.txt || true
       - uses: actions/upload-artifact@v7
         if: always()
         with:

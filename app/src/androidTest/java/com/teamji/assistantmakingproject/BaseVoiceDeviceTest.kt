@@ -2,6 +2,7 @@ package com.teamji.assistantmakingproject
 
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.teamji.assistantmakingproject.audio.PcmPlayer
 import com.teamji.assistantmakingproject.voice.BaseVoiceClient
 import com.teamji.assistantmakingproject.voice.ReplyLanguage
 import kotlinx.coroutines.*
@@ -23,6 +24,10 @@ class BaseVoiceDeviceTest {
             val audio = client.synthesize(text, language)
             assertTrue("$language must produce audio", audio.pcm16.size > audio.sampleRateHz / 4)
             assertTrue("$language must produce a non-silent signal", audio.pcm16.any { kotlin.math.abs(it.toInt()) > 100 })
+            withContext(Dispatchers.Main) {
+                val player = PcmPlayer()
+                try { player.play(audio.pcm16, audio.sampleRateHz) } finally { player.stop() }
+            }
         }
     }
 

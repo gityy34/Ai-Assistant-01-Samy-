@@ -20,7 +20,7 @@ class PcmPlayer {
         val audioTrack = AudioTrack.Builder()
             .setAudioAttributes(
                 AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_ASSISTANCE_ACCESSIBILITY)
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
                     .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                     .build()
             )
@@ -34,16 +34,22 @@ class PcmPlayer {
             .setBufferSizeInBytes(maxOf(minBuffer, samples.size * 2))
             .setTransferMode(AudioTrack.MODE_STATIC)
             .build()
-        val written = audioTrack.write(samples, 0, samples.size)
-        check(written == samples.size) { "Audio output accepted only $written of ${samples.size} samples" }
-        audioTrack.play()
         track = audioTrack
+        try {
+            check(audioTrack.state == AudioTrack.STATE_INITIALIZED) { "Audio output initialization failed" }
+            val written = audioTrack.write(samples, 0, samples.size)
+            check(written == samples.size) { "Audio output accepted only $written of ${samples.size} samples" }
+            audioTrack.play()
+        } catch (error: Throwable) {
+            stop()
+            throw error
+        }
     }
 
     fun stop() {
         track?.let {
             runCatching { it.stop() }
-            it.release()
+            runCatching { it.release() }
         }
         track = null
     }
