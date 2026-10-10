@@ -23,6 +23,9 @@ class SpeechTextPlannerTest {
     @Test fun pureEnglishUsesEnglishEvenWithUrduPreference() {
         assertEquals(ReplyLanguage.ENGLISH, SpeechTextPlanner.plan("Hello", ReplyLanguage.URDU).single().language)
     }
+    @Test fun commonArabicKeyboardVariantsAreNormalizedForUrdu() {
+        assertEquals("کیا", SpeechTextPlanner.plan("كيا", ReplyLanguage.URDU).single().text)
+    }
     @Test(expected = IllegalArgumentException::class) fun emptySymbolsAreRejected() {
         SpeechTextPlanner.plan("🌿🤲", ReplyLanguage.URDU)
     }

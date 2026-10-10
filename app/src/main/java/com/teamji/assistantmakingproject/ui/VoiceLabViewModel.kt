@@ -10,10 +10,6 @@ import com.teamji.assistantmakingproject.audio.PcmPlayer
 import com.teamji.assistantmakingproject.audio.WavAudioRecorder
 import com.teamji.assistantmakingproject.voice.LanguagePolicy
 import com.teamji.assistantmakingproject.voice.ReplyLanguage
-import com.teamji.assistantmakingproject.voice.SynthesisRequest
-import com.teamji.assistantmakingproject.voice.UnconfiguredMultilingualVoiceEngine
-import com.teamji.assistantmakingproject.voice.VoiceCloneEngine
-import com.teamji.assistantmakingproject.voice.VoiceReference
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import com.teamji.assistantmakingproject.voice.BaseVoiceClient
@@ -52,7 +48,6 @@ class VoiceLabViewModel(application: Application) : AndroidViewModel(application
     private val baseVoice = BaseVoiceClient(application)
     private var previewJob: Job? = null
     private var generation = 0
-    private val engine: VoiceCloneEngine = UnconfiguredMultilingualVoiceEngine()
     private var activeRecordingFile: File? = null
 
     private val _state = MutableStateFlow(VoiceLabUiState(engineName = "Base voices + experimental English cloning; Urdu cloning pending"))
@@ -245,7 +240,6 @@ class VoiceLabViewModel(application: Application) : AndroidViewModel(application
         if (_state.value.isRecording) {
             stopRecording()
         }
-        engine.stop()
         player.stop()
         _state.update { it.copy(isBusy = false, status = "Stopped") }
     }
@@ -257,7 +251,6 @@ class VoiceLabViewModel(application: Application) : AndroidViewModel(application
         baseVoice.stop()
         CoroutineScope(Dispatchers.IO).launch { baseVoice.release() }
         player.stop()
-        engine.release()
         super.onCleared()
     }
 }

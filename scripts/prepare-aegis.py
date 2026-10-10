@@ -9,9 +9,11 @@ root = Path(sys.argv[1])
 name = "ur_PK-aegis_female-medium.onnx"
 config = json.loads((root / (name + ".json")).read_text(encoding="utf-8"))
 assert config["espeak"]["voice"] == "ur"
+# sherpa Piper consumes Unicode code points. Composite diphthong entries in
+# this config are not emitted as single code points; retain all single-character IDs.
 with (root / "tokens.txt").open("w", encoding="utf-8") as f:
     for token, ids in config["phoneme_id_map"].items():
-        if token != "\n":
+        if len(token) == 1 and token != "\n":
             f.write(f"{token} {ids[0] if isinstance(ids, list) else ids}\n")
 model = onnx.load(root / name)
 del model.metadata_props[:]

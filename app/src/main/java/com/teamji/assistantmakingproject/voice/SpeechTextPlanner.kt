@@ -13,7 +13,7 @@ object SpeechTextPlanner {
                     Character.getType(cp) == Character.NON_SPACING_MARK.toInt()) appendCodePoint(cp)
                 else append(' ')
             }
-        }.replace(Regex("\\s+"), " ").trim()
+        }.replace('ك', 'ک').replace('ي', 'ی').replace(Regex("\\s+"), " ").trim()
         require(cleaned.isNotBlank()) { "Enter readable Urdu or English text" }
         val result = mutableListOf<SpeechPart>()
         var language = preferred
